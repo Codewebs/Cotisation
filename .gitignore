@@ -1,0 +1,38 @@
+# Built variants
+**/build/
+**/captures/
+
+# Android Studio / IntelliJ
+.idea/
+!.idea/runConfigurations/
+*.iml
+.gradle
+local.properties
+.idea/caches/
+.idea/libraries/
+.idea/modules.xml
+.idea/workspace.xml
+.idea/navEditor.xml
+.idea/assetWizardSettings.xml
+.idea/vcs.xml
+
+# Kotlin
+.kotlin/
+*.kotlin_module
+
+# Logs
+*.log
+
+# External / Archives
+*.rar
+*.zip
+*.tar
+*.gz
+*.7z
+
+# Root level backups or misplaced files
+/Drawer.kt
+
+# OS specific
+.DS_Store
+Thumbs.db
