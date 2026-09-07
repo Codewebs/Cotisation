@@ -48,6 +48,7 @@ fun SortieSecoursScreen(
     participant: ParticipantWithParts,
     onDismiss: () -> Unit,
     cycleId : Long,
+    transactionType: TransactionType = TransactionType.SORTIE_SECOURS,
     viewModel: TransactionViewModel = hiltViewModel()
 ) {
     var montant by remember { mutableStateOf("") }
@@ -64,7 +65,7 @@ fun SortieSecoursScreen(
             .verticalScroll(rememberScrollState())
     ) {
         Text(
-            text = "Nouvelle Sortie : ${participant.memberWithUser.member.nomSaisi}",
+            text = if (transactionType == TransactionType.SORTIE) "Nouvelle Dépense / Sortie" else "Nouvelle Sortie : ${participant.memberWithUser.member.nomSaisi}",
             style = MaterialTheme.typography.headlineSmall,
             color = AfroGold
         )
@@ -157,13 +158,14 @@ fun SortieSecoursScreen(
         Button(
             onClick = {
                 if (montant.isNotEmpty()) {
-                    viewModel.enregistrerSortieSecours(
+                    viewModel.enregistrerSortie(
                         caisseId = caisseId,
                         memberId = participant.memberWithUser.member.id,
                         montant = montant.toLong(),
                         motif = motifSelectionne,
                         description = description,
-                        cycleId = cycleId
+                        cycleId = cycleId,
+                        type = transactionType
                     )
                     onDismiss()
                 }

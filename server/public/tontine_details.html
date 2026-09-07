@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cotisation - Détails de la Tontine</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen p-4 md:p-8">
+    <div class="max-w-6xl mx-auto">
+        <!-- Header -->
+        <header class="flex justify-between items-center mb-8">
+            <a href="/profile" class="text-cyan-400 hover:text-cyan-300 font-bold flex items-center gap-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                RETOUR AU PROFIL
+            </a>
+            <div class="flex gap-4">
+                <span id="tontine-exercice" class="bg-gray-800 px-4 py-2 rounded-xl text-gray-400 font-mono text-sm border border-gray-700">----</span>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Colonne Gauche: Infos & Membres -->
+            <div class="lg:col-span-1 space-y-8">
+                <section class="bg-gray-800 rounded-3xl p-8 border border-gray-700 shadow-xl">
+                    <h1 id="tontine-name" class="text-3xl font-black text-cyan-400 mb-4 tracking-tight">Chargement...</h1>
+                    <div class="space-y-2 text-sm text-gray-400">
+                        <p>Début: <span id="tontine-start" class="text-gray-200">--/--/----</span></p>
+                        <p>Fin: <span id="tontine-end" class="text-gray-200">--/--/----</span></p>
+                    </div>
+                </section>
+
+                <section class="bg-gray-800 rounded-3xl p-8 border border-gray-700 shadow-xl">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-bold">Membres</h2>
+                        <span id="member-count" class="bg-cyan-500/20 text-cyan-400 px-3 py-1 rounded-full text-xs font-bold">0</span>
+                    </div>
+                    <div id="member-list" class="space-y-4">
+                        <!-- Rempli par JS -->
+                    </div>
+                </section>
+            </div>
+
+            <!-- Colonne Droite: Caisses -->
+            <div class="lg:col-span-2 space-y-8">
+                <section>
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-2xl font-black tracking-tight text-white uppercase">Caisses de l'association</h2>
+                        <button class="bg-cyan-500 hover:bg-cyan-600 text-gray-900 px-4 py-2 rounded-xl text-xs font-bold transition">NOUVELLE CAISSE</button>
+                    </div>
+                    <div id="caisse-list" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- Rempli par JS -->
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const tontineId = urlParams.get('id');
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if (!tontineId) {
+                window.location.href = '/profile';
+                return;
+            }
+            fetchTontineDetails();
+        });
+
+        async function fetchTontineDetails() {
+            try {
+                const res = await fetch(`/tontines/${tontineId}`);
+                const tontine = await res.json();
+
+                document.getElementById('tontine-name').innerText = tontine.libelle;
+                document.getElementById('tontine-exercice').innerText = tontine.exercice || 'SANS EXERCICE';
+                document.getElementById('tontine-start').innerText = tontine.dateDebut;
+                document.getElementById('tontine-end').innerText = tontine.dateFin;
+
+                // Membres
+                const memberList = document.getElementById('member-list');
+                document.getElementById('member-count').innerText = tontine.members.length;
+                tontine.members.forEach(m => {
+                    const item = document.createElement('div');
+                    item.className = "flex items-center gap-3 p-3 bg-gray-700/30 rounded-2xl border border-gray-700";
+                    item.innerHTML = `
+                        <div class="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center text-xs font-bold text-cyan-400">
+                            ${m.nomSaisi.charAt(0).toUpperCase()}
+                        </div>
+                        <div class="flex-1">
+                            <p class="text-sm font-bold">${m.nomSaisi}</p>
+                            <p class="text-[10px] text-gray-500">${m.role}</p>
+                        </div>
+                        ${m.isInitiator ? '<span class="text-[10px] bg-cyan-500/10 text-cyan-400 px-2 py-0.5 rounded">INIT</span>' : ''}
+                    `;
+                    memberList.appendChild(item);
+                });
+
+                // Caisses
+                const caisseList = document.getElementById('caisse-list');
+                if (tontine.caisses.length === 0) {
+                    caisseList.innerHTML = '<div class="col-span-full py-12 text-center text-gray-600 bg-gray-800/30 rounded-3xl border border-dashed border-gray-700">Aucune caisse configurée</div>';
+                }
+                tontine.caisses.forEach(c => {
+                    const card = document.createElement('div');
+                    card.className = "bg-gray-800 border border-gray-700 p-6 rounded-3xl hover:border-cyan-500/50 transition duration-300 shadow-xl group";
+                    card.innerHTML = `
+                        <div class="flex justify-between items-start mb-4">
+                            <span class="bg-gray-700 text-gray-300 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider">${c.type.replace('_', ' ')}</span>
+                            <div class="text-right">
+                                <p class="text-cyan-400 font-black text-lg">${c.montantFixe ? c.montantFixe + ' F' : 'LIBRE'}</p>
+                                <p class="text-[10px] text-gray-500">MONTANT</p>
+                            </div>
+                        </div>
+                        <h3 class="text-xl font-bold text-white mb-2 group-hover:text-cyan-400 transition">${c.libelle}</h3>
+                        <div class="mt-6 pt-4 border-t border-gray-700 flex justify-between items-center">
+                            <span class="text-xs text-gray-500">SOLDE ACTUEL</span>
+                            <span class="text-sm font-bold text-emerald-400">0 F</span>
+                        </div>
+                    `;
+                    caisseList.appendChild(card);
+                });
+
+            } catch (e) {
+                console.error("Erreur:", e);
+            }
+        }
+    </script>
+</body>
+</html>

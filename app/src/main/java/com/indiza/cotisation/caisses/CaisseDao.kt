@@ -51,6 +51,12 @@ interface CaisseDao {
     @Query("UPDATE caisses SET remoteId = :remoteId, syncStatus = :syncStatus WHERE id = :id")
     suspend fun updateRemoteInfo(id: Long, remoteId: String, syncStatus: SyncStatus)
 
+    @Upsert
+    suspend fun upsert(caisse: CaisseEntity)
+
+    @Query("SELECT * FROM caisses WHERE remoteId = :remoteId")
+    suspend fun getByRemoteId(remoteId: String?): CaisseEntity?
+
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun addParticipantToCaisse(participant: CaisseParticipantEntity)

@@ -77,9 +77,9 @@ fun CagnotteValidationScreen(
 ) {
 
 
-    var inclureDettes by remember { mutableStateOf(true) }
-    var inclureEchecs by remember { mutableStateOf(true) }
-    var inclurePenalites by remember { mutableStateOf(true) }
+    var inclureDettes by remember { mutableStateOf(false) }
+    var inclureEchecs by remember { mutableStateOf(false) }
+    var inclurePenalites by remember { mutableStateOf(false) }
 
     var details by remember { mutableStateOf(CagnotteDetails()) }
     var montantFinal by remember { mutableStateOf("0") }
@@ -88,20 +88,8 @@ fun CagnotteValidationScreen(
     var doitCloturer by remember { mutableStateOf(false) }
     var cycleDejaCloture by remember { mutableStateOf(false) }
 
-    LaunchedEffect(caisse.id, participant.memberWithUser.member.id) {
-        // Ici on récupère les infos une seule fois au chargement
-        val (cotis, solde) = viewModel.getInfoFinanciereCagnotte(caisse.id, cycleId)
-
-        // Simulation du calcul des détails (À adapter avec tes fonctions ViewModel)
-        val brutCalculé = (caisse.montantFixe ?: 0L) * participant.nombreParts * 10 // exemple 10 cycles
-        val dette = 0L // Récupérer via viewModel.getEtatDetteMembre...
-
-        details = CagnotteDetails(
-            brut = brutCalculé,
-            dettes = dette,
-            echecs = 0L,
-            penalites = 0L
-        )
+    LaunchedEffect(caisse.id, participant.member.id) {
+        details = viewModel.getCagnotteDetails(caisse, participant, cycleId)
     }
 
     LaunchedEffect(inclureDettes, inclureEchecs, inclurePenalites, details) {
@@ -132,38 +120,43 @@ fun CagnotteValidationScreen(
 
         val cycle = viewModel.cycleDao.getCycleById(cycleId)
         cycleDejaCloture = cycle?.estCloture ?: false
-        // Si non clôturé, on suggère de clôturer par défaut si c'est le dernier tour
         if (!cycleDejaCloture) doitCloturer = true
-
-        // Logique de suggestion de montant
-        val suggestion = if (cotis > solde) cotis else solde
-        montantFinal = suggestion.toString()
     }
 
     val montantSaisi = montantFinal.toLongOrNull() ?: 0L
     val depasseSolde = montantSaisi > soldeCaisseReel
 
     var nbPartsAEncaisser by remember { mutableIntStateOf(1) }
+    var partsPlanifiees by remember { mutableIntStateOf(0) }
     val maxPartsDisponibles = participant.nombreParts
+
+    LaunchedEffect(caisse.id, cycleId, participant.member.id) {
+        val planned = viewModel.getPartsPlanifiees(participant.member.id, cycleId)
+        if (planned != null) {
+            partsPlanifiees = planned
+            nbPartsAEncaisser = planned
+        }
+    }
 
     CosmicBackground {
         Scaffold(
-            containerColor = Color.Transparent,
+            containerColor = Color.White, // Fond blanc pour lisibilité
             topBar = {
                 CenterAlignedTopAppBar(
-                    title = { Text("Remise de Cagnotte", color = Color.White) },
+                    title = { Text("Remise de Cagnotte", color = Color.Black) },
                     navigationIcon = {
                         IconButton(onClick = onDismiss) {
-                            Icon(Icons.Default.Close, contentDescription = null, tint = Color.White)
+                            Icon(Icons.Default.Close, contentDescription = null, tint = Color.Black)
                         }
                     },
-                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.Transparent)
+                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.White)
                 )
             }
         ) { padding ->
             Column(
                 modifier = Modifier
                     .fillMaxSize()
+                    .padding(padding)
                     .padding(12.dp)
                     .verticalScroll(scrollState),
 
@@ -174,7 +167,7 @@ fun CagnotteValidationScreen(
                 OptionSwitch(
                     label = "Déduire les échecs (Cotisations impayées)",
                     checked = inclureEchecs,
-                    labelColor = TextColor1,
+                    labelColor = Color.Black,
                     onCheckedChange = { inclureEchecs = it }
 
                 )
@@ -182,13 +175,13 @@ fun CagnotteValidationScreen(
                 OptionSwitch(
                     label = "Déduire les dettes de prêt",
                     checked = inclureDettes,
-                    labelColor = TextColor1,
+                    labelColor = Color.Black,
                     onCheckedChange = { inclureDettes = it }
                 )
 
                 OptionSwitch(
                     label = "Déduire les pénalités de retard",
-                    labelColor = TextColor1,
+                    labelColor = Color.Black,
                     checked = inclurePenalites,
                     onCheckedChange = { inclurePenalites = it }
                 )
@@ -206,16 +199,16 @@ fun CagnotteValidationScreen(
                 Spacer(Modifier.height(16.dp))
 
                 Text(
-                    text = participant.memberWithUser.member.nomSaisi,
+                    text = participant.member.nomSaisi,
                     style = MaterialTheme.typography.headlineMedium,
-                    color = Color.White,
+                    color = Color.Black,
                     fontWeight = FontWeight.Bold
                 )
 
                 Text(
                     text = "Bénéficiaire du tour",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = AfroGold
+                    color = Color.DarkGray
                 )
 
                 Spacer(Modifier.height(32.dp))
@@ -224,34 +217,49 @@ fun CagnotteValidationScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Nombre de parts à liquider :", color = Color.White)
+                    Text("Nombre de parts à liquider :", color = Color.Black)
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { if (nbPartsAEncaisser > 1) nbPartsAEncaisser-- }) {
-                            Icon(Icons.Default.Remove, null, tint = NeonCyan)
+                        IconButton(
+                            onClick = { if (nbPartsAEncaisser > 1) nbPartsAEncaisser-- },
+                            enabled = partsPlanifiees == 0 // Désactivé si planifié
+                        ) {
+                            Icon(Icons.Default.Remove, null, tint = if (partsPlanifiees == 0) NeonCyan else Color.Gray)
                         }
-                        Text("$nbPartsAEncaisser", color = AfroGold, style = MaterialTheme.typography.titleLarge)
-                        IconButton(onClick = { if (nbPartsAEncaisser < maxPartsDisponibles) nbPartsAEncaisser++ }) {
-                            Icon(Icons.Default.Add, null, tint = NeonCyan)
+                        Text("$nbPartsAEncaisser", color = Color.Black, style = MaterialTheme.typography.titleLarge)
+                        IconButton(
+                            onClick = { if (nbPartsAEncaisser < maxPartsDisponibles) nbPartsAEncaisser++ },
+                            enabled = partsPlanifiees == 0 // Désactivé si planifié
+                        ) {
+                            Icon(Icons.Default.Add, null, tint = if (partsPlanifiees == 0) NeonCyan else Color.Gray)
                         }
                     }
+                }
+
+                if (partsPlanifiees > 0) {
+                    Text(
+                        "Tour programmé pour $partsPlanifiees part(s)",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = NeonCyan,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
 
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
                         containerColor = if (depasseSolde) Color.Red.copy(alpha = 0.1f)
-                        else Color.White.copy(alpha = 0.05f)
+                        else Color.Black.copy(alpha = 0.05f)
                     ),
-                    border = BorderStroke(1.dp, if (depasseSolde) Color.Red else Color.White.copy(alpha = 0.1f))
+                    border = BorderStroke(1.dp, if (depasseSolde) Color.Red else Color.Black.copy(alpha = 0.1f))
                 ) {
                     Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("MONTANT À PERCEVOIR", style = MaterialTheme.typography.labelMedium)
+                        Text("MONTANT À PERCEVOIR", style = MaterialTheme.typography.labelMedium, color = Color.Black)
 
                         BasicTextField(
                             value = montantFinal,
                             onValueChange = { montantFinal = it },
                             textStyle = MaterialTheme.typography.displaySmall.copy(
-                                color = if (depasseSolde) Color.Red else NeonCyan,
+                                color = if (depasseSolde) Color.Red else Color.Black,
                                 textAlign = TextAlign.Center
                             ),
                             modifier = Modifier.fillMaxWidth(),
@@ -260,7 +268,7 @@ fun CagnotteValidationScreen(
 
                         Text(
                             "Maximum en caisse : $soldeCaisseReel FCFA",
-                            color = if (depasseSolde) Color.Red else Color.Gray,
+                            color = if (depasseSolde) Color.Red else Color.DarkGray,
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
@@ -280,7 +288,7 @@ fun CagnotteValidationScreen(
                             Spacer(Modifier.width(8.dp))
                             Text(
                                 "Impossible de valider : certains membres n'ont pas encore cotisé pour ce tour.",
-                                color = Color.White,
+                                color = Color.Black,
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
@@ -302,8 +310,9 @@ fun CagnotteValidationScreen(
                     onClick = {
                         viewModel.enregistrerCagnotte(
                             caisseId = caisse.id,
-                            memberId = participant.memberWithUser.member.id,
+                            memberId = participant.member.id,
                             montant = montantFinal.toLongOrNull() ?: 0L,
+                            nbParts = nbPartsAEncaisser,
                             onSuccess = onDismiss,
                             isClose = doitCloturer,
                             cycleId = cycleId
@@ -333,10 +342,10 @@ fun CagnotteValidationScreen(
 }
 
 @Composable
-fun OptionSwitch(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit, labelColor: Color = Color.White) {
+fun OptionSwitch(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit, labelColor: Color = Color.Black) {
     Row(
         Modifier.fillMaxWidth().padding(vertical = 8.dp)
-            .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(12.dp)),
+            .background(if(labelColor == Color.Black) Color.Black.copy(alpha = 0.05f) else Color.White.copy(alpha = 0.05f), RoundedCornerShape(12.dp)),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -360,7 +369,7 @@ fun ValidationAlert(text: String) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.PriorityHigh, contentDescription = null, tint = Color.Red, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(8.dp))
-            Text(text, color = Color.White, style = MaterialTheme.typography.bodySmall)
+            Text(text, color = Color.Black, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
         }
     }
 }

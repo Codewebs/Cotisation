@@ -42,21 +42,33 @@ import com.indiza.cotisation.bank.BulkValidationScreen
 import com.indiza.cotisation.bank.CagnotteValidationScreen
 import com.indiza.cotisation.bank.CreateTourScreen
 import com.indiza.cotisation.bank.JournalTransactionsScreen
+import com.indiza.cotisation.bank.LoanManagementScreen
 import com.indiza.cotisation.bank.MemberSelectionScreen
 import com.indiza.cotisation.bank.PretSaisieScreen
 import com.indiza.cotisation.bank.RemboursementScreen
 import com.indiza.cotisation.bank.SortieSecoursScreen
 import com.indiza.cotisation.bank.TransactionScreen
+import com.indiza.cotisation.bank.TransactionType
 import com.indiza.cotisation.bank.TransactionViewModel
 import com.indiza.cotisation.caisses.CaisseDetailScreen
 import com.indiza.cotisation.caisses.CaisseDetailViewModel
 import com.indiza.cotisation.caisses.ManageParticipantsScreen
+import com.indiza.cotisation.reports.AttendanceReportScreen
+import com.indiza.cotisation.reports.CycleClosureReportScreen
+import com.indiza.cotisation.reports.FinanceReportScreen
+import com.indiza.cotisation.reports.LoanReportScreen
+import com.indiza.cotisation.reports.MemberReportScreen
+import com.indiza.cotisation.reports.PredictiveReportScreen
+import com.indiza.cotisation.reports.RemboursementReportScreen
+import com.indiza.cotisation.reports.ReportsMenuScreen
 import com.indiza.cotisation.sync.ConnectivityObserver
 import com.indiza.cotisation.tontine.CreateTontineScreen
 import com.indiza.cotisation.tontine.EditTontineScreen
 import com.indiza.cotisation.tontine.TontineDetailScreen
 import com.indiza.cotisation.tontine.TontineEntity
 import com.indiza.cotisation.tontine.TontineListScreen
+import com.indiza.cotisation.tontinemembers.MemberActivityScreen
+import com.indiza.cotisation.tontinemembers.MemberActivityViewModel
 import com.indiza.cotisation.tools.CosmicBackground
 import com.indiza.cotisation.users.AuthScreen
 import com.indiza.cotisation.users.SearchTontineScreen
@@ -179,7 +191,28 @@ fun AppEntryPoint(connectivityObserver: ConnectivityObserver) {
                     onBack = { navController.popBackStack() },
                     onCaisseClick = { caisseId, cycleId ->
                         navController.navigate(Screen.CaisseDetail.createRoute(caisseId, cycleId))
+                    },
+                    onLoanManagementClick = { tid ->
+                        navController.navigate(Screen.LoanManagement.createRoute(tid))
+                    },
+                    onMemberClick = { tid, mid ->
+                        navController.navigate("member_activity/$tid/$mid")
+                    },
+                    onEditTontine = { tid ->
+                        navController.navigate(Screen.EditTontine.createRoute(tid))
                     }
+                )
+            }
+
+            composable(
+                route = Screen.LoanManagement.route,
+                arguments = listOf(navArgument("tontineId") { type = NavType.LongType })
+            ) { backStackEntry ->
+                val id = backStackEntry.arguments?.getLong("tontineId") ?: 0L
+                LoanManagementScreen(
+                    tontineId = id,
+                    onBack = { navController.popBackStack() },
+                    navController = navController
                 )
             }
 
@@ -202,6 +235,26 @@ fun AppEntryPoint(connectivityObserver: ConnectivityObserver) {
 
                     )
             }
+
+            composable(
+                route = "cycle_report/{caisseId}/{cycleId}/{cycleNumber}",
+                arguments = listOf(
+                    navArgument("caisseId") { type = NavType.LongType },
+                    navArgument("cycleId") { type = NavType.LongType },
+                    navArgument("cycleNumber") { type = NavType.IntType }
+                )
+            ) { backStackEntry ->
+                val caisseId = backStackEntry.arguments?.getLong("caisseId") ?: 0L
+                val cycleId = backStackEntry.arguments?.getLong("cycleId") ?: 0L
+                val cycleNumber = backStackEntry.arguments?.getInt("cycleNumber") ?: 1
+                com.indiza.cotisation.caisses.CycleReportScreen(
+                    caisseId = caisseId,
+                    cycleId = cycleId,
+                    cycleNumber = cycleNumber,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
             composable(
                 route = "recapitulatif_masse/{caisseId}/{action}/{cycleId}",
                 arguments = listOf(
@@ -243,27 +296,30 @@ fun AppEntryPoint(connectivityObserver: ConnectivityObserver) {
             }
 
             composable(
-                route = "selection_membre/{caisseId}/{action}",
+                route = "selection_membre/{caisseId}/{action}/{cycleId}",
                 arguments = listOf(
                     navArgument("caisseId") { type = NavType.LongType },
-                    navArgument("action") { type = NavType.StringType }
+                    navArgument("action") { type = NavType.StringType },
+                    navArgument("cycleId") { type = NavType.LongType }
                 )
             ) { backStack ->
                 val cid = backStack.arguments?.getLong("caisseId") ?: 0L
                 val actionStr = backStack.arguments?.getString("action") ?: ""
+                val cycleId = backStack.arguments?.getLong("cycleId") ?: 0L
                 val action = CaisseAction.valueOf(actionStr)
 
                 MemberSelectionScreen(
                     caisseId = cid,
                     actionType = action,
-                    onMemberSelected = { participant, cycleId ->
+                    onMemberSelected = { participant, cycId ->
                         val mid = participant.memberWithUser.member.id
                         when (action) {
-                            CaisseAction.COTISATION -> navController.navigate("cotisation/$cid/$mid/$cycleId")
-                            CaisseAction.TOUR_ENCAISSER -> navController.navigate("attribuer_cagnotte/$cid/$mid/$cycleId")
-                            CaisseAction.PRET -> navController.navigate("pret/$cid/$mid/$cycleId")
-                            CaisseAction.REMBOURSEMENT -> navController.navigate("remboursement/$cid/$mid/${participant.memberWithUser.member.nomSaisi}/$cycleId")
-                            CaisseAction.SORTIE_SECOURS -> navController.navigate("sortie_secours/$cid/$mid/$cycleId")
+                            CaisseAction.COTISATION -> navController.navigate("cotisation/$cid/$mid/$cycId")
+                            CaisseAction.TOUR_ENCAISSER -> navController.navigate("attribuer_cagnotte/$cid/$mid/$cycId")
+                            CaisseAction.PRET -> navController.navigate("pret/$cid/$mid/$cycId")
+                            CaisseAction.REMBOURSEMENT -> navController.navigate("remboursement/$cid/$mid/${participant.memberWithUser.member.nomSaisi}/$cycId")
+                            CaisseAction.SORTIE_SECOURS -> navController.navigate("sortie_secours/$cid/$mid/$cycId/SORTIE_SECOURS")
+                            CaisseAction.SORTIE -> navController.navigate("sortie_secours/$cid/$mid/$cycId/SORTIE")
                             else -> {}
                         }
                     },
@@ -381,23 +437,28 @@ fun AppEntryPoint(connectivityObserver: ConnectivityObserver) {
 
 // --- NAVIGATION VERS SORTIE SECOURS ---
             composable(
-                route = "sortie_secours/{caisseId}/{memberId}/{cycleId}",
+                route = "sortie_secours/{caisseId}/{memberId}/{cycleId}/{type}",
                 arguments = listOf(
                     navArgument("caisseId") { type = NavType.LongType },
                     navArgument("memberId") { type = NavType.LongType },
-                    navArgument("cycleId") { type = NavType.LongType }
+                    navArgument("cycleId") { type = NavType.LongType },
+                    navArgument("type") { type = NavType.StringType }
                 )
             ) { backStack ->
                 val vm: TransactionViewModel = hiltViewModel()
                 val uiState by vm.uiState.collectAsStateWithLifecycle()
                 val cycleId = backStack.arguments?.getLong("cycleId") ?: 0L
+                val typeStr = backStack.arguments?.getString("type") ?: "SORTIE_SECOURS"
+                val type = try { TransactionType.valueOf(typeStr) } catch (e: Exception) { TransactionType.SORTIE_SECOURS }
+
                 uiState?.let { (caisse, participant) ->
                     SortieSecoursScreen(
                         caisseId = caisse.id,
                         onDismiss = { navController.popBackStack() },
                         participant = participant,
                         viewModel = vm,
-                        cycleId = cycleId
+                        cycleId = cycleId,
+                        transactionType = type
                     )
                 }
             }
@@ -442,6 +503,150 @@ fun AppEntryPoint(connectivityObserver: ConnectivityObserver) {
                 )
             }
 
+            composable(
+                route = Screen.ReportsMenu.route,
+                arguments = listOf(
+                    navArgument("caisseId") { type = NavType.LongType },
+                    navArgument("cycleId") { type = NavType.LongType }
+                )
+            ) { backStackEntry ->
+                val caisseId = backStackEntry.arguments?.getLong("caisseId") ?: 0L
+                val cycleId = backStackEntry.arguments?.getLong("cycleId") ?: 0L
+                ReportsMenuScreen(
+                    caisseId = caisseId,
+                    cycleId = cycleId,
+                    navController = navController,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(
+                route = Screen.FinanceReport.route,
+                arguments = listOf(
+                    navArgument("caisseId") { type = NavType.LongType },
+                    navArgument("cycleId") { type = NavType.LongType }
+                )
+            ) { backStackEntry ->
+                val caisseId = backStackEntry.arguments?.getLong("caisseId") ?: 0L
+                val cycleId = backStackEntry.arguments?.getLong("cycleId") ?: 0L
+                FinanceReportScreen(
+                    caisseId = caisseId,
+                    cycleId = cycleId,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(
+                route = Screen.AttendanceReport.route,
+                arguments = listOf(
+                    navArgument("caisseId") { type = NavType.LongType },
+                    navArgument("cycleId") { type = NavType.LongType }
+                )
+            ) { backStackEntry ->
+                val caisseId = backStackEntry.arguments?.getLong("caisseId") ?: 0L
+                val cycleId = backStackEntry.arguments?.getLong("cycleId") ?: 0L
+                AttendanceReportScreen(
+                    caisseId = caisseId,
+                    cycleId = cycleId,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(
+                route = Screen.LoanReport.route,
+                arguments = listOf(
+                    navArgument("caisseId") { type = NavType.LongType },
+                    navArgument("cycleId") { type = NavType.LongType }
+                )
+            ) { backStackEntry ->
+                val caisseId = backStackEntry.arguments?.getLong("caisseId") ?: 0L
+                val cycleId = backStackEntry.arguments?.getLong("cycleId") ?: 0L
+                LoanReportScreen(
+                    caisseId = caisseId,
+                    cycleId = cycleId,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(
+                route = Screen.MemberReport.route,
+                arguments = listOf(
+                    navArgument("caisseId") { type = NavType.LongType },
+                    navArgument("cycleId") { type = NavType.LongType }
+                )
+            ) { backStackEntry ->
+                val caisseId = backStackEntry.arguments?.getLong("caisseId") ?: 0L
+                val cycleId = backStackEntry.arguments?.getLong("cycleId") ?: 0L
+                MemberReportScreen(
+                    caisseId = caisseId,
+                    cycleId = cycleId,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(
+                route = Screen.CycleClosureReport.route,
+                arguments = listOf(
+                    navArgument("caisseId") { type = NavType.LongType },
+                    navArgument("cycleId") { type = NavType.LongType }
+                )
+            ) { backStackEntry ->
+                val caisseId = backStackEntry.arguments?.getLong("caisseId") ?: 0L
+                val cycleId = backStackEntry.arguments?.getLong("cycleId") ?: 0L
+                CycleClosureReportScreen(
+                    caisseId = caisseId,
+                    cycleId = cycleId,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(
+                route = Screen.PredictiveReport.route,
+                arguments = listOf(
+                    navArgument("caisseId") { type = NavType.LongType },
+                    navArgument("cycleId") { type = NavType.LongType }
+                )
+            ) { backStackEntry ->
+                val caisseId = backStackEntry.arguments?.getLong("caisseId") ?: 0L
+                val cycleId = backStackEntry.arguments?.getLong("cycleId") ?: 0L
+                PredictiveReportScreen(
+                    caisseId = caisseId,
+                    cycleId = cycleId,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(
+                route = Screen.RemboursementReport.route,
+                arguments = listOf(
+                    navArgument("caisseId") { type = NavType.LongType },
+                    navArgument("cycleId") { type = NavType.LongType }
+                )
+            ) { backStackEntry ->
+                val caisseId = backStackEntry.arguments?.getLong("caisseId") ?: 0L
+                val cycleId = backStackEntry.arguments?.getLong("cycleId") ?: 0L
+                RemboursementReportScreen(
+                    caisseId = caisseId,
+                    cycleId = cycleId,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(
+                route = "member_activity/{tontineId}/{memberId}",
+                arguments = listOf(
+                    navArgument("tontineId") { type = NavType.LongType },
+                    navArgument("memberId") { type = NavType.LongType }
+                )
+            ) { backStack ->
+                val tid = backStack.arguments?.getLong("tontineId") ?: 0L
+                val mid = backStack.arguments?.getLong("memberId") ?: 0L
+                MemberActivityScreen(
+                    tontineId = tid,
+                    memberId = mid,
+                    onBack = { navController.popBackStack() }
+                )
+            }
         }
     }
 }

@@ -24,7 +24,33 @@ sealed class Screen(val route: String) {
     object ManageParticipants : Screen("manage_participants/{caisseId}") {
         fun createRoute(caisseId: Long) = "manage_participants/$caisseId"
     }
-
+    object ReportsMenu : Screen("reports_menu/{caisseId}/{cycleId}") {
+        fun createRoute(caisseId: Long, cycleId: Long) = "reports_menu/$caisseId/$cycleId"
+    }
+    object FinanceReport : Screen("finance_report/{caisseId}/{cycleId}") {
+        fun createRoute(caisseId: Long, cycleId: Long) = "finance_report/$caisseId/$cycleId"
+    }
+    object AttendanceReport : Screen("attendance_report/{caisseId}/{cycleId}") {
+        fun createRoute(caisseId: Long, cycleId: Long) = "attendance_report/$caisseId/$cycleId"
+    }
+    object LoanReport : Screen("loan_report/{caisseId}/{cycleId}") {
+        fun createRoute(caisseId: Long, cycleId: Long) = "loan_report/$caisseId/$cycleId"
+    }
+    object MemberReport : Screen("member_report/{caisseId}/{cycleId}") {
+        fun createRoute(caisseId: Long, cycleId: Long) = "member_report/$caisseId/$cycleId"
+    }
+    object CycleClosureReport : Screen("cycle_closure_report/{caisseId}/{cycleId}") {
+        fun createRoute(caisseId: Long, cycleId: Long) = "cycle_closure_report/$caisseId/$cycleId"
+    }
+    object PredictiveReport : Screen("predictive_report/{caisseId}/{cycleId}") {
+        fun createRoute(caisseId: Long, cycleId: Long) = "predictive_report/$caisseId/$cycleId"
+    }
+    object LoanManagement : Screen("loan_management/{tontineId}") {
+        fun createRoute(tontineId: Long) = "loan_management/$tontineId"
+    }
+    object RemboursementReport : Screen("remboursement_report/{caisseId}/{cycleId}") {
+        fun createRoute(caisseId: Long, cycleId: Long) = "remboursement_report/$caisseId/$cycleId"
+    }
 }
 
-enum class CaisseAction { COTISATION, PRET, REMBOURSEMENT, SORTIE_SECOURS, TOUR_ENCAISSER, SORTIE }
+enum class CaisseAction { COTISATION, PRET, REMBOURSEMENT, SORTIE_SECOURS, TOUR_ENCAISSER, SORTIE, VOIR_TOURS }

@@ -8,5 +8,7 @@ data class MemberUiModel(
     val matricule: String,
     val role: Role,
     val isMe: Boolean,
-    val isLinked: Boolean
+    val isInitiator: Boolean = false,
+    val isLinked: Boolean,
+    val phoneNumber: String = ""
 )

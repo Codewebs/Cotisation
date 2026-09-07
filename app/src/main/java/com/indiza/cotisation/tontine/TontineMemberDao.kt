@@ -67,6 +67,15 @@ interface TontineMemberDao {
 """)
     fun getParticipantsByCaisse(caisseId: Long): Flow<List<ParticipantWithParts>>
 
+    @Transaction
+    @Query("""
+    SELECT tm.*, cp.nombreParts FROM tontine_members tm
+    INNER JOIN caisse_participants cp ON tm.id = cp.memberId
+    WHERE cp.caisseId = :caisseId
+    ORDER BY cp.ordrePassage ASC
+""")
+    suspend fun getParticipantsByCaisseSnapshot(caisseId: Long): List<ParticipantWithParts>
+
     @Query("UPDATE caisse_participants SET ordrePassage = :nouveauOrdre WHERE caisseId = :caisseId AND memberId = :memberId")
     suspend fun updateParticipantOrder(caisseId: Long, memberId: Long, nouveauOrdre: Int)
 
@@ -103,5 +112,8 @@ interface TontineMemberDao {
     WHERE cp.memberId = :memberId AND cp.caisseId = :caisseId
 """)
     suspend fun getParticipantWithParts(memberId: Long, caisseId: Long): ParticipantWithParts?
+
+    @Query("SELECT * FROM tontine_members WHERE tontineId = :tontineId AND userId = :userId")
+    suspend fun getMemberEntity(tontineId: Long, userId: String): TontineMemberEntity?
 
 }

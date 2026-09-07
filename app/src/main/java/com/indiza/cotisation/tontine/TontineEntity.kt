@@ -1,12 +1,16 @@
 package com.indiza.cotisation.tontine
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.indiza.cotisation.sync.SyncStatus
 import com.indiza.cotisation.sync.Syncable
 import java.time.LocalDate
 
-@Entity(tableName = "tontines")
+@Entity(
+    tableName = "tontines",
+    indices = [Index("remoteId", unique = true)]
+)
 data class TontineEntity(
     @PrimaryKey(autoGenerate = true)
     override val id: Long = 0L,
@@ -27,6 +31,7 @@ data class TontineEntity(
 data class TontineSyncDto(
     val remoteId: String?,
     val libelle: String,
+    val exercice: String?,
     val dateDebut: String,
     val dateFin: String,
     val updatedAt: Long
@@ -34,6 +39,7 @@ data class TontineSyncDto(
 fun TontineSyncDto.toApiDto() = TontineApiDto(
     id = remoteId,
     libelle = libelle,
+    exercice = exercice,
     dateDebut = dateDebut,
     dateFin = dateFin,
     updatedAt = updatedAt
@@ -41,6 +47,7 @@ fun TontineSyncDto.toApiDto() = TontineApiDto(
 fun TontineEntity.toSyncDto() = TontineSyncDto(
     remoteId = remoteId,
     libelle = libelle,
+    exercice = exercice,
     dateDebut = dateDebut.toString(),
     dateFin = dateFin.toString(),
     updatedAt = updatedAt

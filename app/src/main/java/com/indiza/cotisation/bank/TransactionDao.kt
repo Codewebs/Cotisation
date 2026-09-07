@@ -36,8 +36,6 @@ interface TransactionDao {
         FROM transactions
         WHERE caisseId = :caisseId
           AND cycleId = :cycleId
-          AND type = 'COTISATION'
-          AND montant > 0
     """)
     fun getSoldeDuCycle(caisseId: Long, cycleId: Long): Flow<Long?>
 
@@ -66,8 +64,8 @@ interface TransactionDao {
     """)
     fun getEtatDetteMembre(caisseId: Long, memberId: Long): Flow<Long?>
 
-    @Query("SELECT COUNT(*) FROM transactions WHERE caisseId = :caisseId AND type = 'TOUR_ENCAISSER'")
-    fun getBeneficiairesCagnotte(caisseId: Long): Flow<List<Long>>
+    @Query("SELECT memberId FROM transactions WHERE caisseId = :caisseId AND type = 'TOUR_ENCAISSER'")
+    fun getBeneficiairesCagnotteIds(caisseId: Long): Flow<List<Long>>
 
     @Transaction
     @Query("""
@@ -134,4 +132,115 @@ interface TransactionDao {
     WHERE caisseId = :caisseId AND memberId = :memberId AND type = 'COTISATION'
 """)
     suspend fun getTotalCotiseReel(caisseId: Long, memberId: Long): Long?
+
+    @Query("""
+    SELECT SUM(montant) FROM transactions 
+    WHERE caisseId = :caisseId AND cycleId = :cycleId AND type = 'COTISATION' AND memberId = :memberId
+""")
+    fun getSommeCotiseeParMembreDuCycle(caisseId: Long, cycleId: Long, memberId: Long): Flow<Long?>
+
+    @Query("""
+    SELECT SUM(ABS(montant)) FROM transactions 
+    WHERE caisseId = :caisseId AND cycleId = :cycleId AND type = 'TOUR_ENCAISSER'
+""")
+    fun getMontantDistribueCycle(caisseId: Long, cycleId: Long): Flow<Long?>
+
+    @Query("""
+    SELECT SUM(ABS(montant)) FROM transactions 
+    WHERE caisseId = :caisseId AND cycleId = :cycleId AND type = :type
+""")
+    fun getSommeParTypeEtCycle(caisseId: Long, cycleId: Long, type: TransactionType): Flow<Long?>
+
+    @Query("""
+        DELETE FROM transactions 
+        WHERE caisseId = :caisseId 
+        AND memberId = :memberId 
+        AND cycleId = :cycleId 
+        AND type = 'TOUR_ENCAISSER'
+    """)
+    suspend fun deleteTransactionCagnotte(caisseId: Long, memberId: Long, cycleId: Long)
+
+    @Query("""
+        SELECT SUM(montant) FROM transactions 
+        WHERE memberId = :memberId AND caisseId = :caisseId 
+        AND type IN ('PENALITE_RETARD', 'PENALITE_ECHEC')
+    """)
+    fun getSommePenalitesMembre(memberId: Long, caisseId: Long): Flow<Long?>
+
+    @Query("""
+        SELECT SUM(nombreParts) FROM tontine_members m
+        JOIN caisse_participants cp ON m.id = cp.memberId
+        WHERE cp.caisseId = :caisseId AND m.isActive = 1
+    """)
+    suspend fun getTotalPartsCaisse(caisseId: Long): Int?
+
+    @Query("""
+        SELECT SUM(montant) FROM transactions 
+        WHERE memberId = :memberId AND caisseId = :caisseId 
+        AND cycleId = :cycleId AND type = 'COTISATION'
+    """)
+    suspend fun getSommeCotiseeMembreCycle(memberId: Long, caisseId: Long, cycleId: Long): Long?
+
+    @Query("""
+        SELECT SUM(t.montant) FROM transactions t
+        JOIN caisse_cycles c ON t.cycleId = c.id
+        WHERE t.caisseId = :caisseId AND t.memberId = :memberId AND t.type = 'COTISATION'
+        AND c.numeroCycle <= :targetNumeroCycle
+    """)
+    suspend fun getSommeCotisJusqueCycle(caisseId: Long, memberId: Long, targetNumeroCycle: Int): Long?
+    @Query("""
+        SELECT SUM(t.montant) FROM transactions t
+        JOIN caisses c ON t.caisseId = c.id
+        WHERE c.tontineId = :tontineId
+    """)
+    fun getTontineGlobalBalance(tontineId: Long): Flow<Long?>
+
+    @Query("""
+        SELECT SUM(ABS(t.montant)) FROM transactions t
+        JOIN caisses c ON t.caisseId = c.id
+        WHERE c.tontineId = :tontineId AND t.montant < 0
+    """)
+    fun getTontineTotalOutflows(tontineId: Long): Flow<Long?>
+
+    @Query("""
+        SELECT SUM(t.montant) FROM transactions t
+        JOIN caisses c ON t.caisseId = c.id
+        WHERE c.tontineId = :tontineId AND t.montant > 0
+    """)
+    fun getTontineTotalInflows(tontineId: Long): Flow<Long?>
+
+    @Query("""
+        SELECT SUM(montantPrincipal) FROM prets p
+        JOIN caisses c ON p.caisseId = c.id
+        WHERE c.tontineId = :tontineId AND p.statut != 'REMBOURSE'
+    """)
+    fun getTontineTotalActiveLoans(tontineId: Long): Flow<Long?>
+
+    @Query("""
+        SELECT SUM(montantInterets) FROM prets p
+        JOIN caisses c ON p.caisseId = c.id
+        WHERE c.tontineId = :tontineId AND p.statut != 'REMBOURSE'
+    """)
+    fun getTontineForecastGains(tontineId: Long): Flow<Long?>
+
+    @Query("""
+        SELECT SUM(t.montant) FROM transactions t
+        JOIN caisses c ON t.caisseId = c.id
+        WHERE c.tontineId = :tontineId AND c.possibilitePret = 1
+    """)
+    fun getTontineLendableBalance(tontineId: Long): Flow<Long?>
+
+    @Query("""
+        SELECT SUM(t.montant) FROM transactions t
+        JOIN caisses c ON t.caisseId = c.id
+        WHERE c.tontineId = :tontineId AND c.possibilitePret = 0
+    """)
+    fun getTontineNonLendableBalance(tontineId: Long): Flow<Long?>
+
+    @Query("""
+        SELECT SUM(montant) FROM transactions 
+        WHERE referencePretId = :pretId 
+        AND type = 'REMBOURSEMENT'
+    """)
+    suspend fun getTotalRemboursementPret(pretId: Long): Long?
 }

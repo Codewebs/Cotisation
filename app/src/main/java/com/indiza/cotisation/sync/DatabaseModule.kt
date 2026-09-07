@@ -65,4 +65,8 @@ object DatabaseModule {
     fun provideTourDao(db: AppDatabase): TourDao {
         return db.tourDao()
     }
+    @Provides
+    fun providePretDao(db: AppDatabase): com.indiza.cotisation.bank.PretDao {
+        return db.pretDao()
+    }
 }

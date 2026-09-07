@@ -11,10 +11,13 @@ enum class TransactionType {
     PRET,            // Sortie d'argent (Caisse Prêt)
     REMBOURSEMENT,   // Entrée d'argent (Caisse Prêt)
     SORTIE_SECOURS,  // Sortie (Caisse Secours/Aide)
+    SORTIE,          // Sortie générique / Dépense
     PENALITE_RETARD,        // Amende pour retard
     PENALITE_ECHEC,        // Amende pour retard
     INTERET,          // Intérêts générés par un prêt
     TOUR_ENCAISSER,        // Quand un membre bouffe la cotisation à son tour
+    TRANSFERT_SORTIE,     // Argent retiré d'une caisse pour une autre
+    TRANSFERT_ENTREE      // Argent reçu d'une autre caisse
 }
 @Entity(
     tableName = "caisse_cycles",

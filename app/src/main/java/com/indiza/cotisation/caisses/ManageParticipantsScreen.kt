@@ -19,6 +19,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -43,6 +44,9 @@ fun ManageParticipantsScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
+    val allSelected = state.allTontineMembers.isNotEmpty() && 
+                      state.allTontineMembers.all { m -> state.participants.any { it.member.id == m.member.id } }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -50,6 +54,15 @@ fun ManageParticipantsScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = null, tint = Color.White)
+                    }
+                },
+                actions = {
+                    TextButton(onClick = { viewModel.toggleAllParticipants(!allSelected) }) {
+                        Text(
+                            text = if (allSelected) "TOUT DÉSELECTIONNER" else "TOUT SÉLECTIONNER",
+                            color = NeonCyan,
+                            style = MaterialTheme.typography.labelMedium
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Black)
@@ -75,10 +88,10 @@ fun ManageParticipantsScreen(
                     minPartsAllowed = partsDejaTouchees, // Nouvelle contrainte
                     canBeRemoved = partsDejaTouchees == 0, // Nouvelle contrainte
                     onToggle = { selected ->
-                        viewModel.toggleParticipant(memberId, selected, totalPartsActuelles)
+                        viewModel.toggleParticipantCaisse(memberId, selected, totalPartsActuelles)
                     },
                     onPartsChange = { newParts ->
-                        viewModel.toggleParticipant(memberId, true, newParts)
+                        viewModel.toggleParticipantCaisse(memberId, true, newParts)
                     }
                 )
             }

@@ -103,7 +103,7 @@ fun TransactionRow(item: TransactionWithMember) {
         TransactionType.REMBOURSEMENT -> Color.Green
         TransactionType.PENALITE_ECHEC -> AfroGold
         TransactionType.PENALITE_RETARD -> DeepDarkViolet
-        TransactionType.PRET, TransactionType.SORTIE_SECOURS -> Color.Red
+        TransactionType.PRET, TransactionType.SORTIE_SECOURS, TransactionType.SORTIE -> Color.Red
         else -> Color.White
     }
 

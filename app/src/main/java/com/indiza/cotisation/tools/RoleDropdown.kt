@@ -23,6 +23,7 @@ import com.indiza.cotisation.users.Role
 @Composable
 fun RoleDropdown(
     selectedRole: Role,
+    availableRoles: List<Role> = Role.values().toList(),
     onRoleSelected: (Role) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -32,7 +33,7 @@ fun RoleDropdown(
         onExpandedChange = { expanded = !expanded }
     ) {
         OutlinedTextField(
-            value = selectedRole.name,
+            value = selectedRole.displayName,
             onValueChange = {},
             readOnly = true,
             label = { Text("Attribuer un rôle") },
@@ -44,9 +45,9 @@ fun RoleDropdown(
             expanded = expanded,
             onDismissRequest = { expanded = false }
         ) {
-            Role.values().forEach { role ->
+            availableRoles.forEach { role ->
                 DropdownMenuItem(
-                    text = { Text(role.name) },
+                    text = { Text(role.displayName) },
                     onClick = {
                         onRoleSelected(role)
                         expanded = false

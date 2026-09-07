@@ -3,8 +3,14 @@ package com.indiza.cotisation.tontine
 import androidx.room.Transaction
 import com.indiza.cotisation.bank.CycleDao
 import com.indiza.cotisation.bank.CycleEntity
+import com.indiza.cotisation.bank.TransactionDao
+import com.indiza.cotisation.bank.TransactionEntity
+import com.indiza.cotisation.bank.TransactionType
 import com.indiza.cotisation.caisses.CaisseDraft
 import com.indiza.cotisation.caisses.CaisseEntity
+import com.indiza.cotisation.caisses.CaisseType
+import com.indiza.cotisation.caisses.FrequenceCotisation
+import com.indiza.cotisation.caisses.CaisseDao
 import com.indiza.cotisation.users.Role
 import com.indiza.cotisation.users.SessionDao
 import com.indiza.cotisation.users.UserDao
@@ -16,9 +22,11 @@ import javax.inject.Inject
 
 class TontineRepository @Inject constructor(
     private val dao: TontineDao,
+    private val caisseDao: CaisseDao,
     private val tontineMemberDao: TontineMemberDao,
     private val userDao: UserDao,
     private val cycleDao: CycleDao,
+    private val transactionDao: TransactionDao,
     private val sessionDao: SessionDao,
     private val apiService: TontineApi
 )
@@ -60,20 +68,72 @@ class TontineRepository @Inject constructor(
 
     }
 
+    @Transaction
+    suspend fun setupBasicLoanFund(tontineId: Long, amount: Long, sourceCaisseId: Long): Long {
+        val allCaisses = caisseDao.getCaissesByTontine(tontineId).first()
+        var caisseBasique = allCaisses.find { it.isBasique }
+        
+        val basiqueId = if (caisseBasique == null) {
+            val newCaisse = CaisseEntity(
+                tontineId = tontineId,
+                type = CaisseType.PRET,
+                libelle = "Caisse de Prêt Basique",
+                frequence = FrequenceCotisation.MENSUEL,
+                isBasique = true,
+                possibilitePret = true,
+                plafondPret = amount
+            )
+            val id = caisseDao.insertCaisse(newCaisse)
+            cycleDao.insertCycle(CycleEntity(caisseId = id, numeroCycle = 1))
+            caisseBasique = newCaisse.copy(id = id)
+            id
+        } else {
+            caisseDao.updateCaisse(caisseBasique.copy(plafondPret = (caisseBasique.plafondPret ?: 0L) + amount))
+            caisseBasique.id
+        }
+
+        val sourceCycle = cycleDao.getCycleActifSnapshot(sourceCaisseId)
+        val targetCycle = cycleDao.getCycleActifSnapshot(basiqueId)
+        
+        val currentUserId = tontineMemberDao.getTontineMembers(tontineId).find { it.role == Role.PRESIDENT || it.role == Role.TRESORIER }?.id ?: 0L
+
+        transactionDao.insertTransaction(
+            TransactionEntity(
+                caisseId = sourceCaisseId,
+                memberId = currentUserId,
+                cycleId = sourceCycle?.id ?: 0L,
+                montant = -amount,
+                type = TransactionType.TRANSFERT_SORTIE,
+                motif = "Transfert vers Caisse de Prêt Basique"
+            )
+        )
+
+        transactionDao.insertTransaction(
+            TransactionEntity(
+                caisseId = basiqueId,
+                memberId = currentUserId,
+                cycleId = targetCycle?.id ?: 0L,
+                montant = amount,
+                type = TransactionType.TRANSFERT_ENTREE,
+                motif = "Dotation initiale/augmentation depuis ${allCaisses.find { it.id == sourceCaisseId }?.libelle}"
+            )
+        )
+
+        return basiqueId
+    }
+
     suspend fun searchTontines(query: String): List<TontineEntity> {
         return try {
-            // D'abord essayer l'API
             val remoteResults = apiService.searchTontines(query)
-
-            // Sauvegarder localement les résultats
-            remoteResults.forEach { remoteTontine ->
-                dao.upsert(remoteTontine)
+            val entities = remoteResults.map { dto ->
+                val existing = dao.getByRemoteId(dto.id)
+                dto.toEntity().copy(id = existing?.id ?: 0L)
             }
-
-            remoteResults
-
+            entities.forEach { entity ->
+                dao.upsert(entity)
+            }
+            entities
         } catch (e: Exception) {
-            // Fallback: recherche locale
             dao.searchTontines(query)
         }
     }
@@ -94,7 +154,6 @@ class TontineRepository @Inject constructor(
         dateDebut: LocalDate,
         dateFin: LocalDate
     ): Long {
-        // Créer la tontine
         val tontineId = dao.insertTontine(
             TontineEntity(
                 libelle = libelle,
@@ -104,7 +163,6 @@ class TontineRepository @Inject constructor(
             )
         )
 
-        // Ajouter le créateur comme INITIATEUR
         val userId = getCurrentUserId()
         userId?.let { id->
             val currentUser = userDao.getUserById(id)
@@ -112,10 +170,11 @@ class TontineRepository @Inject constructor(
                 TontineMemberEntity(
                     tontineId = tontineId,
                     userId = id,
-                    nomSaisi = currentUser?.nom ?: "Administrateur", // ✅ AJOUTÉ
+                    nomSaisi = currentUser?.nom ?: "Administrateur",
                     phone = currentUser?.phone ?: "",
                     matricule = currentUser?.matricule ?: "",
-                    role = Role.INITIATEUR
+                    role = Role.INITIATEUR,
+                    isInitiator = true
                 )
             )
         }
@@ -139,29 +198,15 @@ class TontineRepository @Inject constructor(
     }
 
     suspend fun deleteTontineIfEmpty(tontineId: Long): Result<Unit> {
-
-
         return try {
-            // 1. Vérifier le nombre de membres (On exclut l'initiateur ?
-            // Ou on vérifie s'il n'y a personne d'autre)
             val memberCount = tontineMemberDao.getMemberCount(tontineId)
-
-            // 2. Récupérer la tontine avec ses caisses pour vérifier
             val tontineWithCaisses = dao.getTontineWithCaisses(tontineId).first()
-
-            // Condition : Uniquement l'initiateur (count <= 1) et 0 caisses
             if (memberCount > 1) {
-
                 return Result.failure(Exception("Impossible de supprimer : des membres sont déjà inscrits."))
             }
-
             if (tontineWithCaisses.caisses.isNotEmpty()) {
-                println("******* °°°°°° Tentative de suppression de la tontine")
                 return Result.failure(Exception("Impossible de supprimer : des caisses sont déjà configurées."))
             }
-            println("°°° x °° Tentative de suppression de la tontine")
-
-            // Si tout est vide, on supprime
             dao.deleteTontineById(tontineId)
             Result.success(Unit)
         } catch (e: Exception) {

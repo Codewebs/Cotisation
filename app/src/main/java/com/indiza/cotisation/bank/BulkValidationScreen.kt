@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,21 +18,20 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.Divider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.indiza.cotisation.CaisseAction
 import com.indiza.cotisation.caisses.CaisseEntity
 import com.indiza.cotisation.tontinemembers.ParticipantWithParts
@@ -50,23 +49,67 @@ fun BulkValidationScreen(
     onConfirm: () -> Unit,
     onBack: () -> Unit,
 ) {
+    val soldeActuel by viewModel.soldeActuel.collectAsStateWithLifecycle()
     val selected = remember(participants) { mutableStateListOf<Boolean>().apply { addAll(participants.map { true }) } }
     val selectedParticipants = participants.filterIndexed { index, _ -> selected.getOrNull(index) != false }
-    val totalMontant = selectedParticipants.sumOf {
-        if (actionType == CaisseAction.COTISATION) (caisse.montantFixe ?: 0L) * it.nombreParts
-        else (caisse.montantFixe ?: 0L)
+    
+    // Pour TOUR_ENCAISSER, on doit calculer la somme des parts de cagnotte théoriques
+    // Si TransactionViewModel.validerEnMasse utilise montantUnitaire (cagnotte d'un membre)
+    val totalADeduire = if (actionType == CaisseAction.TOUR_ENCAISSER) {
+        selectedParticipants.size * (caisse.montantFixe ?: 0L)
+    } else {
+        selectedParticipants.sumOf { (caisse.montantFixe ?: 0L) * it.nombreParts }
     }
+
+    val soldeInsuffisant = actionType == CaisseAction.TOUR_ENCAISSER && totalADeduire > soldeActuel
 
     CosmicBackground {
         Scaffold(containerColor = Color.Transparent) { padding ->
             Column(modifier = Modifier.padding(padding).padding(horizontal = 16.dp, vertical = 12.dp)) {
                 Text("Récapitulatif global", style = MaterialTheme.typography.titleMedium, color = Color.White, fontWeight = FontWeight.Bold)
+                
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = if(actionType == CaisseAction.COTISATION) "Encaissement des cotisations" else "Remise des cagnottes",
+                        color = NeonCyan,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Surface(
+                        color = Color.White.copy(alpha = 0.1f),
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Text(
+                            text = "Cycle n°$cycleId",
+                            color = Color.White,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
+                }
+                
                 Text(
-                    text = if(actionType == CaisseAction.COTISATION) "Encaissement des cotisations" else "Remise des cagnottes",
-                    color = NeonCyan,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold
+                    text = caisse.libelle,
+                    color = Color.Gray,
+                    style = MaterialTheme.typography.labelMedium
                 )
+
+                if (soldeInsuffisant) {
+                    Spacer(Modifier.height(8.dp))
+                    Surface(
+                        color = Color.Red.copy(alpha = 0.1f),
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, Color.Red)
+                    ) {
+                        Text(
+                            text = "Solde insuffisant ($soldeActuel FCFA) pour distribuer $totalADeduire FCFA",
+                            color = Color.Red,
+                            modifier = Modifier.padding(8.dp),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
 
                 Spacer(Modifier.height(12.dp))
 
@@ -134,8 +177,11 @@ fun BulkValidationScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("TOTAL À ENCAISSER", fontWeight = FontWeight.Bold, color = Color.White, style = MaterialTheme.typography.labelLarge)
-                        Text("$totalMontant FCFA", color = NeonCyan, fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            text = if (actionType == CaisseAction.TOUR_ENCAISSER) "TOTAL À DISTRIBUER" else "TOTAL À ENCAISSER",
+                            fontWeight = FontWeight.Bold, color = Color.White, style = MaterialTheme.typography.labelLarge
+                        )
+                        Text("${totalADeduire} FCFA", color = NeonCyan, fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleMedium)
                     }
                 }
 
@@ -145,10 +191,14 @@ fun BulkValidationScreen(
                         onConfirm()
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = totalMontant > 0,
+                    enabled = totalADeduire > 0 && !soldeInsuffisant,
                     colors = ButtonDefaults.buttonColors(containerColor = NeonCyan, disabledContainerColor = Color.Gray.copy(alpha = 0.3f))
                 ) {
-                    Text("CONFIRMER L'ENREGISTREMENT", color = if (totalMontant > 0) Color.Black else Color.White, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = if (soldeInsuffisant) "SOLDE INSUFFISANT" else "CONFIRMER L'ENREGISTREMENT",
+                        color = if (totalADeduire > 0 && !soldeInsuffisant) Color.Black else Color.White, 
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }

@@ -70,13 +70,35 @@ fun MemberSelectionScreen(
     onBack: () -> Unit
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val cycleId = state.currentCycle?.id ?: return
+    val cycleId = state.currentCycle?.id ?: 0L
 
     val participantsAafficher = if (actionType == CaisseAction.TOUR_ENCAISSER) {
         state.participantsPlanifies
     } else {
         state.participants
     }
+
+    LaunchedEffect(state, actionType) {
+        println("DEBUG_SELECTION: === Entrée Interface Sélection ===")
+        println("DEBUG_SELECTION: Action: $actionType")
+        println("DEBUG_SELECTION: Caisse ID: $caisseId")
+        println("DEBUG_SELECTION: Cycle ID: $cycleId")
+        println("DEBUG_SELECTION: Nb Participants Total (Caisse): ${state.participants.size}")
+        state.participants.forEach { p ->
+            println("DEBUG_SELECTION:   - Participant: ${p.member.nomSaisi} (ID: ${p.member.id})")
+        }
+        println("DEBUG_SELECTION: Nb Participants Planifiés: ${state.participantsPlanifies.size}")
+        state.participantsPlanifies.forEach { p ->
+            println("DEBUG_SELECTION:   - Planifié: ${p.member.nomSaisi} (ID: ${p.member.id})")
+        }
+        println("DEBUG_SELECTION: Final participantsAafficher size: ${participantsAafficher.size}")
+        participantsAafficher.forEach { p ->
+            println("DEBUG_SELECTION:   - A Afficher: ${p.member.nomSaisi}")
+        }
+        println("DEBUG_SELECTION: =================================")
+    }
+
+    if (state.currentCycle == null) return
     val membresCotises = if (actionType == CaisseAction.COTISATION) state.dejaCotise.size else 0
 
     Scaffold(
@@ -88,6 +110,10 @@ fun MemberSelectionScreen(
                         text = when(actionType) {
                             CaisseAction.TOUR_ENCAISSER -> "Attribuer Cagnotte"
                             CaisseAction.COTISATION -> "Enregistrer Cotisation"
+                            CaisseAction.PRET -> "Accorder un Prêt"
+                            CaisseAction.REMBOURSEMENT -> "Enregistrer Remboursement"
+                            CaisseAction.SORTIE_SECOURS -> "Sortie de Secours"
+                            CaisseAction.SORTIE -> "Nouvelle Sortie"
                             else -> "Sélectionner un membre"
                         },
                         color = Color.White,
@@ -171,6 +197,8 @@ fun MemberSelectionScreen(
                     items(participantsAafficher) { participant ->
                         val memberId = participant.memberWithUser.member.id
                         val aDejaCotise = state.dejaCotise.contains(memberId)
+                        val estPlanifie = actionType == CaisseAction.TOUR_ENCAISSER && 
+                                          state.participantsPlanifies.any { it.member.id == memberId }
 
                         val estDesactive = when (actionType) {
                             CaisseAction.COTISATION -> aDejaCotise
@@ -179,6 +207,7 @@ fun MemberSelectionScreen(
 
                         val messageStatus = when {
                             actionType == CaisseAction.COTISATION && aDejaCotise -> "Cotisation déjà effectuée"
+                            estPlanifie -> "TOUR PROGRAMMÉ"
                             else -> null
                         }
 
@@ -275,7 +304,7 @@ fun EmptyStatePlaceholder(actionType: CaisseAction, padding: PaddingValues) {
     Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
         Text(
             text = if (actionType == CaisseAction.TOUR_ENCAISSER)
-                "Aucun tour n'a été planifié. Cliquez sur 'Ajouter Tour' d'abord."
+                "Aucun tour planifié pour ce cycle.\nVeuillez d'abord utiliser 'Ajouter Tour' dans les détails de la caisse."
             else "Aucun participant trouvé.",
             color = Color.Gray,
             textAlign = TextAlign.Center,

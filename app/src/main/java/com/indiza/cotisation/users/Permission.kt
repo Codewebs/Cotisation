@@ -34,11 +34,10 @@ enum class Permission {
     MANAGE_PRIVACY        // Modifier le mode anonyme de la tontine
 }
 
-enum class Role(val permissions: Set<Permission>) {
-    PRESIDENT(Permission.values().toSet()),
-
-    INITIATEUR(Permission.values().toSet()),
-
+enum class Role(val permissions: Set<Permission>, val displayName: String, val isUnique: Boolean = true) {
+    PRESIDENT(Permission.values().toSet(), "Président.e"),
+    VICE_PRESIDENT(Permission.values().toSet(), "Vice-Président.e"),
+    INITIATEUR(Permission.values().toSet(), "Initiateur.rice"),
     SECRETAIRE(setOf(
         Permission.EDIT_TONTINE_RULES,
         Permission.ADD_MEMBER,
@@ -51,9 +50,19 @@ enum class Role(val permissions: Set<Permission>) {
         Permission.VIEW_OWN_HISTORY,
         Permission.GENERATE_REPORTS,
         Permission.VIEW_MEMBER_NAMES,
-
-    )),
-
+    ), "Secrétaire"),
+    SECRETAIRE_ADJOINT_A1(setOf(
+        Permission.CREATE_SESSION,
+        Permission.VALIDATE_PRESENCE,
+        Permission.VIEW_OWN_HISTORY,
+        Permission.VIEW_MEMBER_NAMES,
+    ), "Secrétaire Adjoint.e (A1)"),
+    SECRETAIRE_ADJOINT_A2(setOf(
+        Permission.CREATE_SESSION,
+        Permission.VALIDATE_PRESENCE,
+        Permission.VIEW_OWN_HISTORY,
+        Permission.VIEW_MEMBER_NAMES,
+    ), "Secrétaire Adjoint.e (A2)"),
     TRESORIER(setOf(
         Permission.COLLECT_MONEY,
         Permission.DISBURSE_MONEY,
@@ -62,17 +71,20 @@ enum class Role(val permissions: Set<Permission>) {
         Permission.VIEW_OWN_HISTORY,
         Permission.GENERATE_REPORTS,
         Permission.VIEW_MEMBER_NAMES,
-    )),
-
+    ), "Trésorier.e (T1)"),
+    TRESORIER_ADJOINT_TA2(setOf(
+        Permission.COLLECT_MONEY,
+        Permission.VIEW_ALL_FINANCES,
+        Permission.VIEW_OWN_HISTORY,
+        Permission.VIEW_MEMBER_NAMES,
+    ), "Trésorier.e Adjoint.e (TA2)"),
     COMMISSAIRE_AUX_COMPTES(setOf(
         Permission.AUDIT_ACCOUNTS,
         Permission.VIEW_ALL_FINANCES,
         Permission.VIEW_OWN_HISTORY,
         Permission.GENERATE_REPORTS
-    )),
-
+    ), "Commissaire aux Comptes"),
     MEMBRE(setOf(
         Permission.VIEW_OWN_HISTORY
-    ))
-
+    ), "Membre", isUnique = false)
 }

@@ -15,24 +15,34 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.AddCard
+import androidx.compose.material.icons.filled.Assessment
+import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.GroupAdd
+import androidx.compose.material.icons.filled.HealthAndSafety
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.PersonRemove
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -93,6 +103,7 @@ fun CaisseDetailScreen(
     var showConfirmShuffle by remember { mutableStateOf(false) }
     var showActionMenu by remember { mutableStateOf(false) }
     var cycleMenuExpanded by remember { mutableStateOf(false) }
+    var showToursDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(cycleId) {
         viewModel.selectCycleById(cycleId)
@@ -114,7 +125,11 @@ fun CaisseDetailScreen(
                             possibilitePret = state.caisse?.possibilitePret ?: false,
                             onActionSelected = { action ->
                                 showActionMenu = false
-                                navController.navigate("selection_membre/$caisseId/${action.name}")
+                                if (action == com.indiza.cotisation.CaisseAction.VOIR_TOURS) {
+                                    showToursDialog = true
+                                } else {
+                                    navController.navigate("selection_membre/$caisseId/${action.name}/$cycleId")
+                                }
                             }
                         )
                         Spacer(modifier = Modifier.height(16.dp))
@@ -217,7 +232,7 @@ fun CaisseDetailScreen(
                             modifier = Modifier.size(32.dp)
                         ) {
                             Icon(
-                                Icons.Default.ArrowBack,
+                                Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = null,
                                 tint = GlassWhite,
                                 modifier = Modifier.size(20.dp)
@@ -234,6 +249,20 @@ fun CaisseDetailScreen(
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = {
+                                navController.navigate(Screen.ReportsMenu.createRoute(caisseId, cycleId))
+                            },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Assessment,
+                                contentDescription = "Rapports",
+                                tint = NeonCyan,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
                         IconButton(
                             onClick = {
                                 navController.navigate(Screen.TransactionJournal.createRoute(caisseId, cycleId))
@@ -359,15 +388,6 @@ fun CaisseDetailScreen(
                                     }
                                 )
                             }
-
-                            if (state.peutCloturerTour) {
-                                AdminButton(
-                                    text = "Terminer Tour",
-                                    color = NeonCyan,
-                                    icon = Icons.Default.CheckCircle,
-                                    onClick = { /* Appel ViewModel pour mettre estTermine = true sur le tour */ }
-                                )
-                            }
                         }
                     }
                 }
@@ -397,25 +417,23 @@ fun CaisseDetailScreen(
                         prochainBeneficiaire = state.beneficiaireActuel?.memberWithUser?.user?.nom,
                         totalParticipants = state.participants.size,
                         montantCible = (state.caisse?.montantFixe ?: 0L) * maxOf(state.participants.size, 1),
-                        dateLimitePaiement = state.caisse?.dateLimiteJour
+                        dateLimitePaiement = state.caisse?.dateLimiteJour,
+                        totalAmendes = state.totalAmendes,
+                        totalPenalites = state.totalPenalites,
+                        montantDistribue = state.montantDistribue,
+                        beneficiaires = state.beneficiairesDuCycle.map { it.member.member.nomSaisi }.distinct(),
+                        montantRecolte = state.montantRecolte,
+                        onReportClick = {
+                            val cycleNum = state.currentCycle?.numeroCycle ?: 1
+                            navController.navigate("cycle_report/$caisseId/$cycleId/$cycleNum")
+                        },
+                        onToggleLock = {
+                            viewModel.toggleOrdreFige()
+                        }
                     )
                 }
 
-                // 2. Bouton d'action Shuffle (optionnel)
-                if (state.caisse?.redistribution == true) {
-                    item {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 4.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            SmallShuffleButton(onShuffle = { showConfirmShuffle = true })
-                        }
-                    }
-                }
-
-                // 3. Header Fixe des Participants
+                // 2. Header Fixe des Participants
                 stickyHeader {
                     Surface(
                         color = Color(0xFF111827).copy(alpha = 0.95f),
@@ -439,21 +457,42 @@ fun CaisseDetailScreen(
                                 fontWeight = FontWeight.Bold
                             )
 
-                            Surface(
-                                onClick = {
-                                    navController.navigate(Screen.ManageParticipants.createRoute(caisseId))
-                                },
-                                shape = CircleShape,
-                                color = AfroGold,
-                                modifier = Modifier.size(32.dp)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Default.GroupAdd,
-                                        contentDescription = "Gérer les participants",
-                                        tint = Color.Black,
-                                        modifier = Modifier.size(18.dp)
-                                    )
+                                if (state.caisse?.redistribution == true && !state.isReadOnly) {
+                                    IconButton(
+                                        onClick = { showConfirmShuffle = true },
+                                        modifier = Modifier
+                                            .size(32.dp)
+                                            .background(AfroGold, CircleShape)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Casino,
+                                            contentDescription = "Tirage au sort",
+                                            tint = Color.Black,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+
+                                Surface(
+                                    onClick = {
+                                        navController.navigate(Screen.ManageParticipants.createRoute(caisseId))
+                                    },
+                                    shape = CircleShape,
+                                    color = AfroGold,
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.GroupAdd,
+                                            contentDescription = "Gérer les participants",
+                                            tint = Color.Black,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -467,7 +506,6 @@ fun CaisseDetailScreen(
                 ) { index, participant ->
                     val memberId = participant.memberWithUser.member.id
                     val estPlanifie = state.participantsPlanifies.any { it.memberWithUser.member.id == memberId }
-                    val aDejaRecuArgent = state.dejaBeneficiaires.contains(memberId)
 
                     Surface(
                         modifier = Modifier
@@ -484,16 +522,21 @@ fun CaisseDetailScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Box(modifier = Modifier.weight(1f)) {
+                                val aCotiseCeCycle = state.dejaCotise.contains(memberId)
+                                val partsRecuesCeMembre = state.partsEncaisseesJusquiciMap[memberId] ?: 0
+
                                 ParticipantOrderRow(
                                     participant = participant,
                                     ordre = index + 1,
                                     isRedistribution = state.caisse?.redistribution ?: false,
-                                    onMoveUp = { viewModel.moveParticipant(index, index - 1) },
-                                    onMoveDown = { viewModel.moveParticipant(index, index + 1) }
+                                    aCotiseCeCycle = aCotiseCeCycle,
+                                    partsRecuesTotal = partsRecuesCeMembre,
+                                    onMoveUp = { if (state.caisse?.ordreFige != true) viewModel.moveParticipant(index, index - 1) },
+                                    onMoveDown = { if (state.caisse?.ordreFige != true) viewModel.moveParticipant(index, index + 1) }
                                 )
                             }
 
-                            if (estPlanifie && !aDejaRecuArgent) {
+                            if (estPlanifie) {
                                 IconButton(
                                     onClick = {
                                         transactionViewModel.annulerPositionnementCagnotte(caisseId, memberId, cycleId)
@@ -505,7 +548,7 @@ fun CaisseDetailScreen(
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.PersonRemove,
-                                        contentDescription = "Retirer du tour",
+                                        contentDescription = "Annuler tour/attribution",
                                         tint = Color(0xFFEF4444),
                                         modifier = Modifier.size(20.dp)
                                     )
@@ -544,8 +587,107 @@ fun CaisseDetailScreen(
                 onDismiss = { showAddDialog = false }
             )
         }
+
+        if (showToursDialog) {
+            ScheduledToursDialog(
+                tours = state.toursDetailCycle,
+                onDismiss = { showToursDialog = false }
+            )
+        }
+    }
+}
+
+@Composable
+fun ScheduledToursDialog(
+    tours: List<com.indiza.cotisation.bank.TourWithBeneficiaires>,
+    onDismiss: () -> Unit
+) {
+    var selectedTourId by remember { mutableStateOf<Long?>(null) }
+
+    LaunchedEffect(tours) {
+        println("DEBUG_TOUR: ScheduledToursDialog - Nombre de tours reçus: ${tours.size}")
+        tours.forEach { t ->
+            val status = if (t.tour.estTermine) "TERMINÉ" else "PLANIFIÉ"
+            val bens = t.beneficiaires.joinToString { b -> 
+                "${b.member.member.nomSaisi} (${b.tourBeneficiaire.nombrePartsAttribuees}P)" 
+            }
+            println("DEBUG_TOUR:   - Tour n°${t.tour.numeroTour} ($status) | Bénéficiaires: $bens")
+        }
     }
 
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Tours Programmés", color = Color.White, fontWeight = FontWeight.Bold) },
+        containerColor = Color(0xFF1A1E2A),
+        text = {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(tours) { tourWithBen ->
+                    val isCurrent = !tourWithBen.tour.estTermine && 
+                                    tours.filter { !it.tour.estTermine }.firstOrNull()?.tour?.id == tourWithBen.tour.id
+                    
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { 
+                                selectedTourId = if (selectedTourId == tourWithBen.tour.id) null else tourWithBen.tour.id 
+                            },
+                        color = if (isCurrent) NeonCyan.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.05f),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, if (isCurrent) NeonCyan else Color.Transparent)
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text(
+                                        text = "Tour n°${tourWithBen.tour.numeroTour}", 
+                                        color = if (isCurrent) NeonCyan else Color.White,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    if (isCurrent) {
+                                        Text("EN COURS", style = MaterialTheme.typography.labelSmall, color = NeonCyan)
+                                    }
+                                }
+                                
+                                if (tourWithBen.tour.estTermine) {
+                                    Icon(Icons.Default.CheckCircle, null, tint = NeonCyan, modifier = Modifier.size(18.dp))
+                                }
+                            }
+                            
+                            if (selectedTourId == tourWithBen.tour.id) {
+                                Spacer(Modifier.height(12.dp))
+                                tourWithBen.beneficiaires.forEach { ben ->
+                                    Row(
+                                        modifier = Modifier.padding(vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(modifier = Modifier.size(6.dp).background(AfroGold, CircleShape))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(
+                                            text = "${ben.member.user?.nom ?: ben.member.member.nomSaisi} (${ben.tourBeneficiaire.nombrePartsAttribuees} part${if(ben.tourBeneficiaire.nombrePartsAttribuees > 1) "s" else ""})", 
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = Color.White.copy(alpha = 0.8f)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { 
+                Text("FERMER", color = NeonCyan, fontWeight = FontWeight.Bold) 
+            }
+        }
+    )
 }
 
 @Composable
@@ -589,6 +731,128 @@ fun SmallShuffleButton(
                     letterSpacing = 0.5.sp
                 )
             }
+        }
+    }
+}
+
+@Composable
+fun CaisseActionButtons(
+    caisseType: CaisseType?,
+    possibilitePret: Boolean,
+    onActionSelected: (com.indiza.cotisation.CaisseAction) -> Unit
+) {
+    Surface(
+        color = Color(0xFF1A1E2A),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, NeonCyan.copy(alpha = 0.2f)),
+        tonalElevation = 8.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(12.dp)
+                .width(220.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                "ACTIONS RAPIDES",
+                style = MaterialTheme.typography.labelSmall,
+                color = NeonCyan,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+
+            // Boutons d'actions selon le type de caisse
+            when (caisseType) {
+                CaisseType.COTISATION_SIMPLE -> {
+                    ActionButtonItem(
+                        icon = Icons.Default.AddCard,
+                        text = "Encaisser Cotisation",
+                        onClick = { onActionSelected(com.indiza.cotisation.CaisseAction.COTISATION) }
+                    )
+                    ActionButtonItem(
+                        icon = Icons.Default.Payments,
+                        text = "Attribuer Cagnotte",
+                        onClick = { onActionSelected(com.indiza.cotisation.CaisseAction.TOUR_ENCAISSER) }
+                    )
+                    ActionButtonItem(
+                        icon = Icons.Default.Visibility,
+                        text = "Voir Ordre Tours",
+                        onClick = { onActionSelected(com.indiza.cotisation.CaisseAction.VOIR_TOURS) }
+                    )
+                }
+                CaisseType.PRET -> {
+                    ActionButtonItem(
+                        icon = Icons.Default.AttachMoney,
+                        text = "Accorder un Prêt",
+                        onClick = { onActionSelected(com.indiza.cotisation.CaisseAction.PRET) }
+                    )
+                    ActionButtonItem(
+                        icon = Icons.Default.Payments,
+                        text = "Remboursement",
+                        onClick = { onActionSelected(com.indiza.cotisation.CaisseAction.REMBOURSEMENT) }
+                    )
+                }
+                CaisseType.SECOURS -> {
+                    ActionButtonItem(
+                        icon = Icons.Default.HealthAndSafety,
+                        text = "Sortie de Secours",
+                        onClick = { onActionSelected(com.indiza.cotisation.CaisseAction.SORTIE_SECOURS) }
+                    )
+                }
+                CaisseType.DEVELOPPEMENT, CaisseType.FONCTIONNEMENT, CaisseType.PERSONNALISEE -> {
+                    ActionButtonItem(
+                        icon = Icons.Default.AddCard,
+                        text = "Encaisser Montant",
+                        onClick = { onActionSelected(com.indiza.cotisation.CaisseAction.COTISATION) }
+                    )
+                    ActionButtonItem(
+                        icon = Icons.AutoMirrored.Filled.ExitToApp,
+                        text = "Effectuer une Sortie",
+                        onClick = { onActionSelected(com.indiza.cotisation.CaisseAction.SORTIE) }
+                    )
+                }
+                null -> {}
+            }
+
+            // Optionnel : Ajout du prêt si autorisé pour cette caisse (cas mixte)
+            if (possibilitePret && caisseType != CaisseType.PRET) {
+                androidx.compose.material3.HorizontalDivider(
+                    color = Color.White.copy(alpha = 0.1f),
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+                ActionButtonItem(
+                    icon = Icons.Default.AttachMoney,
+                    text = "Prêt Exceptionnel",
+                    onClick = { onActionSelected(com.indiza.cotisation.CaisseAction.PRET) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ActionButtonItem(
+    icon: ImageVector,
+    text: String,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        color = Color.White.copy(alpha = 0.05f),
+        shape = RoundedCornerShape(10.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(icon, null, tint = AfroGold, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(12.dp))
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.White
+            )
         }
     }
 }

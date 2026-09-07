@@ -66,6 +66,9 @@ interface TontineDao {
     @Upsert
     suspend fun upsert(tontine: TontineEntity)
 
+    @Query("SELECT * FROM tontines WHERE remoteId = :remoteId")
+    suspend fun getByRemoteId(remoteId: String?): TontineEntity?
+
     @Query("DELETE FROM tontines WHERE id = :tontineId")
     suspend fun deleteTontineById(tontineId: Long)
 

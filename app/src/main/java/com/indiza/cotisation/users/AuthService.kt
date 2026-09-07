@@ -46,6 +46,16 @@ class AuthService @Inject constructor(
         }
     }
 
+    suspend fun registerOnline(nom: String, phone: String, pin: String): Result<UserEntity> {
+        return try {
+            val response = userRepository.registerRemote(nom, phone, pin)
+            createLocalSession(response.id!!)
+            Result.success(response.toUserEntity())
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun loginOffline(phone: String, pin: String): Result<SessionEntity> {
         return try {
             val user = userRepository.getUserByPhone(phone)
@@ -56,6 +66,16 @@ class AuthService @Inject constructor(
             }
 
             val session = createLocalSession(user.id)
+            Result.success(session)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun loginOnline(phone: String, pin: String): Result<SessionEntity> {
+        return try {
+            val response = userRepository.loginRemote(phone, pin)
+            val session = createLocalSession(response.id!!)
             Result.success(session)
         } catch (e: Exception) {
             Result.failure(e)

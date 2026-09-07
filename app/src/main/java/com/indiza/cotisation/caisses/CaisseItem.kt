@@ -1,6 +1,10 @@
 package com.indiza.cotisation.caisses
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -8,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.AccountBalance
@@ -43,12 +48,14 @@ fun CaisseItem(
     modifier: Modifier = Modifier
 ) {
     var showDetails by remember { mutableStateOf(false) }
+    val theme = CaisseTheme.getTheme(caisse.type)
 
     Card(
         modifier = modifier
             .fillMaxWidth()
             .clickable { showDetails = true },
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+        border = BorderStroke(1.dp, theme.color.copy(alpha = 0.3f))
     ) {
         Row(
             modifier = Modifier
@@ -56,19 +63,20 @@ fun CaisseItem(
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = when (caisse.type) {
-                    CaisseType.COTISATION_SIMPLE -> Icons.Default.AccountBalance
-                    CaisseType.SECOURS -> Icons.Default.MedicalServices
-                    CaisseType.DEVELOPPEMENT -> Icons.Default.TrendingUp
-                    CaisseType.PRET -> Icons.Default.AttachMoney
-                    CaisseType.FONCTIONNEMENT -> Icons.Default.Settings
-                    CaisseType.PERSONNALISEE -> Icons.Default.Tune
-                },
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(24.dp)
-            )
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(theme.color.copy(alpha = 0.1f), CircleShape)
+                    .border(1.dp, theme.color.copy(alpha = 0.2f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = theme.icon,
+                    contentDescription = null,
+                    tint = theme.color,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
 
             Spacer(modifier = Modifier.width(16.dp))
 

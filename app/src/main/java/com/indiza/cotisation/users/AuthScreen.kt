@@ -13,17 +13,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.indiza.cotisation.tools.*
+import android.content.Context
+import android.widget.Toast
 
 @Composable
 fun AuthScreen(onAuthSuccess: () -> Unit) {
     var showRegister by remember { mutableStateOf(false) }
 
-    // Design épuré : Fond très clair / blanc cassé
     val backgroundBrush = Brush.verticalGradient(
         colors = listOf(Color(0xFFF8F9FA), Color(0xFFE9ECEF))
     )
@@ -67,64 +69,87 @@ fun LoginScreen(
     var pin by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var showUrlSettings by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
-    Column(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Icon(Icons.Default.Groups, contentDescription = null, tint = AfroOrange, modifier = Modifier.size(64.dp))
-        Spacer(modifier = Modifier.height(16.dp))
-        Text("BON RETOUR", color = Color(0xFF2D3436), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Text("Connectez-vous pour accéder à vos tontines", color = Color.Gray)
-        
-        Spacer(modifier = Modifier.height(32.dp))
+    if (showUrlSettings) {
+        UrlSettingsDialog(
+            onDismiss = { showUrlSettings = false },
+            onSaved = {
+                Toast.makeText(context, "URL mise à jour. Veuillez redémarrer l'application.", Toast.LENGTH_LONG).show()
+                showUrlSettings = false
+            }
+        )
+    }
 
-        CleanCard {
-            OutlinedTextField(
-                value = phone, onValueChange = { phone = it },
-                label = { Text("Numéro de téléphone") },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp)
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            OutlinedTextField(
-                value = pin, onValueChange = { pin = it },
-                label = { Text("Code PIN") },
-                modifier = Modifier.fillMaxWidth(),
-                visualTransformation = PasswordVisualTransformation(),
-                shape = RoundedCornerShape(16.dp)
-            )
-            if (errorMessage != null) {
-                Text(errorMessage!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 8.dp))
-            }
-            Spacer(modifier = Modifier.height(24.dp))
-            Button(
-                onClick = {
-                    if (phone.isBlank() || pin.length != 4) {
-                        errorMessage = "Veuillez remplir tous les champs"
-                        return@Button
-                    }
-                    isLoading = true
-                    viewModel.login(phone, pin) { result ->
-                        isLoading = false
-                        result.onSuccess { onLoginSuccess() }
-                              .onFailure { errorMessage = "Erreur de connexion" }
-                    }
-                },
-                enabled = !isLoading,
-                modifier = Modifier.fillMaxWidth().height(50.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = AfroOrange)
-            ) {
-                if (isLoading) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
-                else Text("SE CONNECTER", fontWeight = FontWeight.Bold)
-            }
+    Box(modifier = Modifier.fillMaxSize()) {
+        IconButton(
+            onClick = { showUrlSettings = true },
+            modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)
+        ) {
+            Icon(Icons.Default.Settings, contentDescription = "Paramètres API", tint = Color.Gray)
         }
-        
-        TextButton(onClick = onNavigateToRegister) {
-            Text("Pas encore membre ? ", color = Color.Gray)
-            Text("Créer un compte", color = AfroOrange)
+
+        Column(
+            modifier = Modifier.fillMaxSize().padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(Icons.Default.Groups, contentDescription = null, tint = AfroOrange, modifier = Modifier.size(64.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+            Text("BON RETOUR", color = Color(0xFF2D3436), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Text("Connectez-vous pour accéder à vos tontines", color = Color.Gray)
+            
+            Spacer(modifier = Modifier.height(32.dp))
+
+            CleanCard {
+                OutlinedTextField(
+                    value = phone, onValueChange = { phone = it },
+                    label = { Text("Numéro de téléphone") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                OutlinedTextField(
+                    value = pin, onValueChange = { pin = it },
+                    label = { Text("Code PIN") },
+                    modifier = Modifier.fillMaxWidth(),
+                    visualTransformation = PasswordVisualTransformation(),
+                    shape = RoundedCornerShape(16.dp)
+                )
+                if (errorMessage != null) {
+                    Text(errorMessage!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 8.dp))
+                }
+                Spacer(modifier = Modifier.height(24.dp))
+                Button(
+                    onClick = {
+                        if (phone.isBlank() || pin.length != 4) {
+                            errorMessage = "Veuillez remplir tous les champs"
+                            return@Button
+                        }
+                        isLoading = true
+                        viewModel.login(phone, pin) { result ->
+                            isLoading = false
+                            result.onSuccess { onLoginSuccess() }
+                                  .onFailure { error ->
+                                      errorMessage = error.message ?: "Erreur de connexion"
+                                  }
+                        }
+                    },
+                    enabled = !isLoading,
+                    modifier = Modifier.fillMaxWidth().height(50.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = AfroOrange)
+                ) {
+                    if (isLoading) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
+                    else Text("SE CONNECTER", fontWeight = FontWeight.Bold)
+                }
+            }
+            
+            TextButton(onClick = onNavigateToRegister) {
+                Text("Pas encore membre ? ", color = Color.Gray)
+                Text("Créer un compte", color = AfroOrange)
+            }
         }
     }
 }
@@ -176,7 +201,9 @@ fun RegisterScreen(
                     viewModel.register(nom, MatriculeGenerator.generate(), phone, pin) { result ->
                         isLoading = false
                         result.onSuccess { onRegisterSuccess() }
-                              .onFailure { errorMessage = "Erreur inscription" }
+                              .onFailure { error ->
+                                  errorMessage = error.message ?: "Erreur inscription"
+                              }
                     }
                 },
                 enabled = !isLoading,
@@ -193,4 +220,38 @@ fun RegisterScreen(
             Text("Se connecter", color = AfroOrange)
         }
     }
+}
+
+@Composable
+fun UrlSettingsDialog(onDismiss: () -> Unit, onSaved: () -> Unit) {
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("cotisation_prefs", Context.MODE_PRIVATE) }
+    var url by remember { mutableStateOf(prefs.getString("api_base_url", "http://10.0.2.2:3000/") ?: "") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("URL du Serveur API") },
+        text = {
+            Column {
+                Text("Modifiez l'URL pour pointer vers votre serveur local ou distant.", style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = url,
+                    onValueChange = { url = it },
+                    label = { Text("URL de base") },
+                    placeholder = { Text("http://192.168.x.x:3000/") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                prefs.edit().putString("api_base_url", url).apply()
+                onSaved()
+            }) { Text("ENREGISTRER") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("ANNULER") }
+        }
+    )
 }

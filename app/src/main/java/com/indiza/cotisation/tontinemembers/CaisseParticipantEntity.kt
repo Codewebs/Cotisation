@@ -4,9 +4,11 @@ import androidx.room.ColumnInfo
 import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.ForeignKey
+import androidx.room.Relation
 import com.indiza.cotisation.caisses.CaisseEntity
 import com.indiza.cotisation.tontine.TontineMemberEntity
 import com.indiza.cotisation.tontine.TontineMemberWithUser
+import com.indiza.cotisation.users.UserEntity
 
 @Entity(
     tableName = "caisse_participants",
@@ -26,7 +28,17 @@ data class CaisseParticipantEntity(
 
 data class ParticipantWithParts(
     @Embedded
-    val memberWithUser: TontineMemberWithUser,
+    val member: TontineMemberEntity,
+    
+    @Relation(
+        parentColumn = "userId",
+        entityColumn = "id"
+    )
+    val user: UserEntity?,
+    
     @ColumnInfo(name = "nombreParts")
     val nombreParts: Int
-)
+) {
+    val memberWithUser: TontineMemberWithUser 
+        get() = TontineMemberWithUser(member, user)
+}

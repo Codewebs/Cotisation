@@ -41,6 +41,7 @@ data class TontineMemberEntity(
     val phone: String,
 
     val role: Role,
+    val isInitiator: Boolean = false,
     val joinedAt: Long = System.currentTimeMillis(),
     val isActive: Boolean = true
 )

@@ -20,6 +20,7 @@ import com.indiza.cotisation.tontine.TontineMemberDao
 import com.indiza.cotisation.tontine.TontineMemberEntity
 import com.indiza.cotisation.tontinemembers.CaisseParticipantEntity
 import com.indiza.cotisation.tools.DateConverter
+import com.indiza.cotisation.tools.RoleConverter
 import com.indiza.cotisation.users.SessionDao
 import com.indiza.cotisation.users.SessionEntity
 import com.indiza.cotisation.users.TontineRoleEntity
@@ -43,10 +44,10 @@ import com.indiza.cotisation.users.UserEntity
         TourEntity::class,
         TourBeneficiaireEntity::class
     ],
-    version = 1,
+    version = 5,
     exportSchema = false
 )
-@TypeConverters(DateConverter::class)
+@TypeConverters(DateConverter::class, RoleConverter::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun tontineDao(): TontineDao
     abstract fun caisseDao(): CaisseDao
@@ -57,4 +58,5 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun transactionDao(): TransactionDao
     abstract fun cycleDao(): CycleDao
     abstract fun tourDao(): TourDao
+    abstract fun pretDao(): com.indiza.cotisation.bank.PretDao
 }

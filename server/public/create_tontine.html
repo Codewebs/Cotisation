@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cotisation - Créer une Tontine</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen p-4 md:p-8 flex items-center justify-center">
+    <div class="max-w-2xl w-full bg-gray-800 rounded-3xl shadow-2xl border border-gray-700 p-8">
+        <div class="mb-8">
+            <h1 class="text-3xl font-black text-cyan-400">NOUVELLE TONTINE</h1>
+            <p class="text-gray-400">Configurez les bases de votre association</p>
+        </div>
+
+        <div class="space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="col-span-full">
+                    <label class="block text-sm font-medium text-gray-400 mb-2">Nom de la Tontine</label>
+                    <input id="libelle" type="text" placeholder="Ex: Les Amis Solidaires"
+                        class="w-full bg-gray-700 border border-gray-600 rounded-xl px-4 py-3 focus:ring-2 focus:ring-cyan-500 outline-none transition">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-400 mb-2">Exercice / Année</label>
+                    <input id="exercice" type="text" placeholder="Ex: 2024-2025"
+                        class="w-full bg-gray-700 border border-gray-600 rounded-xl px-4 py-3 focus:ring-2 focus:ring-cyan-500 outline-none transition">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-400 mb-2">ID Créateur (Initiateur)</label>
+                    <input id="creatorId" type="text" placeholder="UUID de l'utilisateur"
+                        class="w-full bg-gray-700 border border-gray-600 rounded-xl px-4 py-3 focus:ring-2 focus:ring-cyan-500 outline-none transition text-xs font-mono">
+                    <p class="text-[10px] text-gray-500 mt-1 italic">* En production, ceci est récupéré de la session.</p>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-400 mb-2">Date de Début</label>
+                    <input id="dateDebut" type="date"
+                        class="w-full bg-gray-700 border border-gray-600 rounded-xl px-4 py-3 focus:ring-2 focus:ring-cyan-500 outline-none transition">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-400 mb-2">Date de Fin</label>
+                    <input id="dateFin" type="date"
+                        class="w-full bg-gray-700 border border-gray-600 rounded-xl px-4 py-3 focus:ring-2 focus:ring-cyan-500 outline-none transition">
+                </div>
+            </div>
+
+            <button onclick="createTontine()"
+                class="w-full bg-cyan-500 hover:bg-cyan-600 text-gray-900 font-bold py-4 rounded-2xl shadow-lg shadow-cyan-500/20 transform active:scale-95 transition">
+                CRÉER LA TONTINE
+            </button>
+        </div>
+
+        <div id="msg-box" class="hidden mt-6 p-4 rounded-xl text-sm text-center"></div>
+
+        <div class="mt-8 text-center">
+            <a href="/" class="text-sm text-gray-500 hover:text-cyan-400 transition">← Retour au tableau de bord</a>
+        </div>
+    </div>
+
+    <script>
+        // Pré-remplir l'ID créateur si disponible en localStorage (après un login réussi)
+        window.onload = () => {
+            const savedUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+            if (savedUser.id) {
+                document.getElementById('creatorId').value = savedUser.id;
+            }
+        };
+
+        async function createTontine() {
+            const msgBox = document.getElementById('msg-box');
+            const data = {
+                libelle: document.getElementById('libelle').value,
+                exercice: document.getElementById('exercice').value,
+                dateDebut: document.getElementById('dateDebut').value,
+                dateFin: document.getElementById('dateFin').value,
+                creatorId: document.getElementById('creatorId').value
+            };
+
+            if (!data.libelle || !data.dateDebut || !data.dateFin) {
+                showMsg("Veuillez remplir les champs obligatoires", false);
+                return;
+            }
+
+            try {
+                const res = await fetch('/tontines', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                const result = await res.json();
+
+                if (res.ok) {
+                    showMsg("Tontine créée avec succès !", true);
+                    setTimeout(() => window.location.href = '/search', 1500);
+                } else {
+                    showMsg(result.error || "Erreur lors de la création", false);
+                }
+            } catch (e) {
+                showMsg("Erreur de connexion au serveur", false);
+            }
+        }
+
+        function showMsg(text, isSuccess) {
+            const msgBox = document.getElementById('msg-box');
+            msgBox.classList.remove('hidden', 'bg-red-900/50', 'text-red-400', 'bg-green-900/50', 'text-green-400');
+            msgBox.classList.add(isSuccess ? 'bg-green-900/50' : 'bg-red-900/50', isSuccess ? 'text-green-400' : 'text-red-400');
+            msgBox.innerText = text;
+        }
+    </script>
+</body>
+</html>

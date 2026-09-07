@@ -94,7 +94,7 @@ fun MemberHeaderCard(member: TontineMemberEntity) {
             Spacer(Modifier.width(16.dp))
             Column {
                 Text(member.nomSaisi, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("ID: ${member.id} • ${member.matricule ?: "Pas de matricule"}", style = MaterialTheme.typography.bodySmall)
+                Text("${member.role.displayName} • ID: ${member.id} • ${member.matricule ?: "Pas de matricule"}", style = MaterialTheme.typography.bodySmall)
                 Text(member.phone, style = MaterialTheme.typography.bodySmall)
             }
         }

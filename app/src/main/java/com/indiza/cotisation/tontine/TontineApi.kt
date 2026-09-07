@@ -21,5 +21,5 @@ interface TontineApi {
     )
 
     @GET("tontines/search")
-    suspend fun searchTontines(@Query("query") query: String): List<TontineEntity>
+    suspend fun searchTontines(@Query("query") query: String): List<TontineApiDto>
 }

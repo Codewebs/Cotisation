@@ -34,11 +34,13 @@ import androidx.compose.ui.unit.dp
 fun MemberItem(
     member: MemberUiModel,
     canEdit: Boolean,
-    onEditClick: () -> Unit
+    onEditClick: () -> Unit,
+    onClick: () -> Unit
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(12.dp),
+        onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
@@ -93,14 +95,15 @@ fun MemberItem(
                     }
                 }
                 Text(
-                    text = member.role.name.replace("_", " "),
+                    text = if (member.isInitiator) "Initiateur • ${member.role.displayName}" else member.role.displayName,
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color.Gray
+                    color = if (member.isInitiator) MaterialTheme.colorScheme.primary else Color.Gray,
+                    fontWeight = if (member.isInitiator) FontWeight.Bold else FontWeight.Normal
                 )
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (canEdit && !member.isMe) {
+                if (canEdit) {
                     IconButton(onClick = onEditClick) {
                         Icon(
                             imageVector = Icons.Default.Edit,

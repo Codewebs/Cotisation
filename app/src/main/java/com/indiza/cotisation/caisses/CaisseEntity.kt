@@ -18,7 +18,10 @@ import com.indiza.cotisation.tontine.TontineEntity
             onDelete = ForeignKey.CASCADE
         )
     ],
-    indices = [Index("tontineId")]
+    indices = [
+        Index("tontineId"),
+        Index("remoteId", unique = true)
+    ]
 )
 data class CaisseEntity(
     @PrimaryKey(autoGenerate = true)
@@ -45,9 +48,12 @@ data class CaisseEntity(
     val penaliteRetardFixe: Long? = null,
     val penaliteEchecFixe: Long? = null,
     val dateLimiteJour: Int? = null,
+    val ordreFige: Boolean = false,
 
     val possibilitePret: Boolean = false,
     val dureeCycles: Int? = null,
+    val plafondPret: Long? = null, // Pour la caisse de prêt basique
+    val isBasique: Boolean = false, // True pour la caisse de prêt automatique
 
     override val remoteId: String? = null,
     override val syncStatus: SyncStatus = SyncStatus.PENDING_CREATE,

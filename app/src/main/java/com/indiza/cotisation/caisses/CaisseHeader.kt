@@ -3,21 +3,14 @@ package com.indiza.cotisation.caisses
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.Divider
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,14 +22,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.indiza.cotisation.bank.CycleEntity
 import com.indiza.cotisation.tools.AfroGold
-import com.indiza.cotisation.tools.DeepDarkViolet
-import com.indiza.cotisation.tools.DeepWhite
 import com.indiza.cotisation.tools.GlassWhite
 import com.indiza.cotisation.tools.NeonCyan
 
 @Composable
 fun CaisseHeader(
-    caisse: CaisseEntity?,
+    caisse: com.indiza.cotisation.caisses.CaisseEntity?,
     currentCycle: CycleEntity?,
     soldeDuCycle: Long = 0L,
     soldePrecedent: Long = 0L,
@@ -47,7 +38,14 @@ fun CaisseHeader(
     prochainBeneficiaire: String? = null,
     totalParticipants: Int = 0,
     montantCible: Long = 0L,
-    dateLimitePaiement: Int? = null
+    dateLimitePaiement: Int? = null,
+    totalAmendes: Long = 0L,
+    totalPenalites: Long = 0L,
+    montantDistribue: Long = 0L,
+    beneficiaires: List<String> = emptyList(),
+    montantRecolte: Long = 0L,
+    onReportClick: () -> Unit = {},
+    onToggleLock: () -> Unit = {}
 ) {
     if (caisse == null) return
 
@@ -55,24 +53,14 @@ fun CaisseHeader(
         val baseMontant = caisse.montantFixe ?: 0L
         if (totalParticipants > 0) baseMontant * totalParticipants else baseMontant
     }
-    // Le solde affiché correspond au montant réellement disponible en caisse pour ce cycle,
-    // c'est-à-dire l'argent non encore attribué à une cagnotte, un prêt ou une autre sortie.
+    
     val ratioMembres = if (totalParticipants > 0) nombreCotisants.toFloat() / totalParticipants.toFloat() else 0f
     val ratioSolde = if (montantObjectif > 0L) soldeDuCycle.toFloat() / montantObjectif.toFloat() else 0f
     val montantAmende = caisse.penaliteRetardFixe ?: 0L
     val montantPenalite = caisse.penaliteEchecFixe ?: 0L
 
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        Color(0xFF1A1E2A),
-                        Color(0xFF0F172A)
-                    )
-                )
-            ),
+        modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF111827).copy(alpha = 0.85f)),
         shape = RoundedCornerShape(18.dp),
         border = BorderStroke(1.dp, NeonCyan.copy(alpha = 0.15f))
@@ -135,30 +123,74 @@ fun CaisseHeader(
             ) {
                 DetailMetricCard(
                     modifier = Modifier.weight(1f),
-                    label = "AMENDES",
-                    value = "$montantAmende F",
+                    label = if (currentCycle?.estCloture == true) "TOT. AMENDES" else "AMENDES",
+                    value = "${if (currentCycle?.estCloture == true) totalAmendes else montantAmende} F",
                     accentColor = Color(0xFFFFC857),
                     helper = "Retard"
                 )
 
                 DetailMetricCard(
                     modifier = Modifier.weight(1f),
-                    label = "PÉNALITÉS",
-                    value = "$montantPenalite F",
+                    label = if (currentCycle?.estCloture == true) "TOT. PÉNALITÉS" else "PÉNALITÉS",
+                    value = "${if (currentCycle?.estCloture == true) totalPenalites else montantPenalite} F",
                     accentColor = Color(0xFFFF7A59),
                     helper = "Échec"
                 )
 
-                DetailMetricCard(
-                    modifier = Modifier.weight(1f),
-                    label = "DATE LIMITE",
-                    value = dateLimitePaiement?.let { "Jour $it" } ?: "—",
-                    accentColor = Color(0xFF8BE9FD),
-                    helper = "Paiement"
-                )
+                if (currentCycle?.estCloture != true) {
+                    DetailMetricCard(
+                        modifier = Modifier.weight(1f),
+                        label = "DATE LIMITE",
+                        value = dateLimitePaiement?.let { "Jour $it" } ?: "—",
+                        accentColor = Color(0xFF8BE9FD),
+                        helper = "Paiement"
+                    )
+                } else {
+                    DetailMetricCard(
+                        modifier = Modifier.weight(1f),
+                        label = "RÉCOLTÉ",
+                        value = "$montantRecolte F",
+                        accentColor = NeonCyan,
+                        helper = "Total Cycle"
+                    )
+                }
             }
 
-            Divider(Modifier.padding(top = 14.dp, bottom = 12.dp), color = Color.White.copy(alpha = 0.08f))
+            if (currentCycle?.estCloture == true) {
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    DetailMetricCard(
+                        modifier = Modifier.weight(1f),
+                        label = "DISTRIBUÉ",
+                        value = "$montantDistribue F",
+                        accentColor = AfroGold,
+                        helper = "Cagnottes"
+                    )
+                    DetailMetricCard(
+                        modifier = Modifier.weight(1f),
+                        label = "EN CAISSE",
+                        value = "$soldeDuCycle F",
+                        accentColor = Color.White,
+                        helper = "Solde Final"
+                    )
+                }
+
+                if (beneficiaires.isNotEmpty()) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "BÉNÉFICIAIRES : ${beneficiaires.joinToString(", ")}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = GlassWhite,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            HorizontalDivider(Modifier.padding(top = 14.dp, bottom = 12.dp), color = Color.White.copy(alpha = 0.08f))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -180,18 +212,48 @@ fun CaisseHeader(
                         )
                     }
                 } else {
-                    Column {
-                        Text(
-                            "STATUT",
-                            color = GlassWhite.copy(alpha = 0.7f),
-                            style = MaterialTheme.typography.labelSmall
-                        )
-                        Text(
-                            "Stable",
-                            color = Color.White,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column {
+                            Text(
+                                "STATUT",
+                                color = GlassWhite.copy(alpha = 0.7f),
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                            Text(
+                                "Stable",
+                                color = Color.White,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        
+                        Spacer(Modifier.width(8.dp))
+                        
+                        IconButton(
+                            onClick = onToggleLock,
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                if (caisse.ordreFige) Icons.Default.Lock else Icons.Default.LockOpen,
+                                contentDescription = "Figer l'ordre",
+                                tint = if (caisse.ordreFige) AfroGold else NeonCyan,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        Spacer(Modifier.width(8.dp))
+                        
+                        IconButton(
+                            onClick = onReportClick,
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PictureAsPdf,
+                                contentDescription = "Rapport",
+                                tint = NeonCyan,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
                 }
 
@@ -267,35 +329,4 @@ private fun MiniTag(label: String, color: Color) {
             .border(0.5.dp, color.copy(alpha = 0.3f), RoundedCornerShape(2.dp))
             .padding(horizontal = 4.dp)
     )
-}
-@Composable
-private fun CompactInfoItem(label: String, value: String) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("$label: ", color = GlassWhite.copy(alpha = 0.5f), style = MaterialTheme.typography.labelSmall)
-        Text(value, color = GlassWhite, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium)
-    }
-}
-
-@Composable
-private fun InfoRow(label: String, value: String) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-        // Changez Color.White par Color.Black pour tester sur fond blanc
-        Text(label, color = Color.Gray, style = MaterialTheme.typography.bodyMedium)
-        Text(value, color = Color.Black, fontWeight = FontWeight.Bold)
-    }
-}
-
-@Composable
-fun InfoBadge(label: String) {
-    Surface(
-        color = GlassWhite.copy(alpha = 0.1f),
-        shape = CircleShape
-    ) {
-        Text(
-            text = label,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-            style = MaterialTheme.typography.labelSmall,
-            color = GlassWhite
-        )
-    }
 }

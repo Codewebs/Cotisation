@@ -2,6 +2,7 @@ package com.indiza.cotisation.tontinemembers
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -14,6 +15,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.indiza.cotisation.tools.RoleDropdown
@@ -21,25 +23,32 @@ import com.indiza.cotisation.users.Role
 
 @Composable
 fun AddMemberDialog(
+    takenUniqueRoles: Set<Role>,
     onDismiss: () -> Unit,
     onConfirm: (nom: String, phone: String, role: Role) -> Unit
 ) {
     var nom by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
-    var matricule by remember { mutableStateOf("") }
     var role by remember { mutableStateOf(Role.MEMBRE) }
+
+    val availableRoles = remember(takenUniqueRoles) {
+        Role.values().filter { !it.isUnique || !takenUniqueRoles.contains(it) || it == Role.MEMBRE }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Ajouter un membre") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(value = nom, onValueChange = { nom = it }, label = { Text("Nom complet") })
-                OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("Téléphone") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone))
-
+                OutlinedTextField(value = nom, onValueChange = { nom = it }, label = { Text("Nom complet") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("Téléphone") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), modifier = Modifier.fillMaxWidth())
 
                 Text("Rôle", style = MaterialTheme.typography.labelMedium)
-                RoleDropdown(selectedRole = role, onRoleSelected = { role = it })
+                RoleDropdown(
+                    selectedRole = role,
+                    availableRoles = availableRoles,
+                    onRoleSelected = { role = it }
+                )
             }
         },
         confirmButton = {

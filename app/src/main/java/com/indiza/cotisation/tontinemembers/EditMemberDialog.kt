@@ -30,23 +30,35 @@ import com.indiza.cotisation.users.Role
 @Composable
 fun EditMemberDialog(
     member: MemberUiModel,
+    takenUniqueRoles: Set<Role>,
     onDismiss: () -> Unit,
     onConfirm: (nom: String, phone: String, role: Role) -> Unit,
     onMapRequest: () -> Unit
 ) {
     var nom by remember { mutableStateOf(member.displayName) }
-    var phone by remember { mutableStateOf("") } // À récupérer via une requête si nécessaire
+    var phone by remember { mutableStateOf(member.phoneNumber) } 
     var role by remember { mutableStateOf(member.role) }
+
+    val availableRoles = remember(takenUniqueRoles, member.role) {
+        Role.values().filter { 
+            !it.isUnique || !takenUniqueRoles.contains(it) || it == Role.MEMBRE || it == member.role 
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Modifier le membre") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(value = nom, onValueChange = { nom = it }, label = { Text("Nom complet") })
+                OutlinedTextField(value = nom, onValueChange = { nom = it }, label = { Text("Nom complet") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("Téléphone") }, modifier = Modifier.fillMaxWidth())
 
                 Text("Rôle", style = MaterialTheme.typography.labelMedium)
-                RoleDropdown(selectedRole = role, onRoleSelected = { role = it })
+                RoleDropdown(
+                    selectedRole = role,
+                    availableRoles = availableRoles,
+                    onRoleSelected = { role = it }
+                )
 
                 if (!member.isLinked) {
                     OutlinedButton(

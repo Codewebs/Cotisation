@@ -13,7 +13,7 @@ class AuthViewModel @Inject constructor(
 
     fun login(phone: String, pin: String, callback: (Result<SessionEntity>) -> Unit) {
         viewModelScope.launch {
-            val result = authService.loginOffline(phone, pin)
+            val result = authService.loginOnline(phone, pin)
             callback(result)
         }
     }
@@ -21,7 +21,7 @@ class AuthViewModel @Inject constructor(
     fun register(nom: String, matricule: String, phone: String, pin: String, callback: (Result<UserEntity>) -> Unit) {
         viewModelScope.launch {
             println("************************************")
-            val result = authService.registerOffline(nom, matricule, phone, pin)
+            val result = authService.registerOnline(nom, phone, pin)
             callback(result)
         }
     }

@@ -8,6 +8,7 @@ enum class MotifSortie {
     DECES_PARENT,
     AIDE_SOCIALE,
     DECES_MEMBRE,
+    DEPENSE_DIVERS,
     AUTRE
 }
 

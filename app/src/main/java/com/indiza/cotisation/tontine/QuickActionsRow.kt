@@ -23,11 +23,14 @@ import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.AddCard
 import androidx.compose.material.icons.filled.Assessment
+import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.HealthAndSafety
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Percent
 import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -47,6 +50,8 @@ import com.indiza.cotisation.caisses.CaisseEntity
 import com.indiza.cotisation.caisses.CaisseType
 import com.indiza.cotisation.users.Permission
 import com.indiza.cotisation.users.Role
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 @Composable
 fun QuickActionsRow(role: Role) {
@@ -111,14 +116,25 @@ fun ActionButton(
 @Composable
 fun CaisseDetailCard(
     caisse: CaisseEntity,
-    soldeGlobal: Long = 0L, // Passer le solde depuis le State du parent
+    soldeGlobal: Long = 0L, 
     onClick: () -> Unit
 ) {
-    // Icône avec cercle coloré selon le type
     val typeColor = when(caisse.type) {
-        CaisseType.PRET -> Color(0xFF2196F3)
-        CaisseType.SECOURS -> Color(0xFF4CAF50)
-        else -> Color.Black
+        CaisseType.PRET -> Color(0xFF2196F3)        // Bleu
+        CaisseType.SECOURS -> Color(0xFFE91E63)      // Rose/Rouge
+        CaisseType.DEVELOPPEMENT -> Color(0xFFFF9800) // Orange
+        CaisseType.COTISATION_SIMPLE -> Color(0xFF4CAF50) // Vert
+        CaisseType.FONCTIONNEMENT -> Color(0xFF9C27B0) // Violet
+        else -> Color(0xFF607D8B) // Gris-bleu
+    }
+
+    val typeIcon = when(caisse.type) {
+        CaisseType.PRET -> Icons.Default.AttachMoney
+        CaisseType.SECOURS -> Icons.Default.HealthAndSafety
+        CaisseType.DEVELOPPEMENT -> Icons.Default.TrendingUp
+        CaisseType.COTISATION_SIMPLE -> Icons.Default.AccountBalanceWallet
+        CaisseType.FONCTIONNEMENT -> Icons.Default.Settings
+        else -> Icons.Default.Tune
     }
 
     Card(
@@ -129,33 +145,22 @@ fun CaisseDetailCard(
             .clickable { onClick() },
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
+        border = BorderStroke(1.dp, typeColor.copy(alpha = 0.3f))
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Icône avec cercle coloré selon le type
-                val typeColor = when(caisse.type) {
-                    CaisseType.PRET -> Color(0xFF2196F3)
-                    CaisseType.SECOURS -> Color(0xFF4CAF50)
-                    else -> Color.Black
-                }
-
                 Box(
                     modifier = Modifier
                         .size(48.dp)
                         .background(typeColor.copy(alpha = 0.1f), CircleShape)
-                        .border(0.5.dp, typeColor.copy(alpha = 0.3f), CircleShape),
+                        .border(1.dp, typeColor.copy(alpha = 0.3f), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = when(caisse.type) {
-                            CaisseType.PRET -> Icons.Default.TrendingUp
-                            CaisseType.SECOURS -> Icons.Default.HealthAndSafety
-                            else -> Icons.Default.AccountBalanceWallet
-                        },
+                        imageVector = typeIcon,
                         contentDescription = null,
                         tint = typeColor,
                         modifier = Modifier.size(24.dp)
@@ -169,9 +174,8 @@ fun CaisseDetailCard(
                         color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.Bold
                     )
-                    // Badge Fréquence
                     Text(
-                        text = "FREQUENCE: ${caisse.frequence.name}",
+                        text = "${caisse.type.name.replace("_", " ")} • ${caisse.frequence.name}",
                         style = MaterialTheme.typography.labelSmall,
                         color = Color.Gray
                     )

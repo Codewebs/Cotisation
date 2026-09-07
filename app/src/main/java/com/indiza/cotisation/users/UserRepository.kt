@@ -57,6 +57,18 @@ class UserRepository @Inject constructor(
         }
     }
 
+    suspend fun loginRemote(phone: String, pin: String): UserResponse {
+        val response = userApi.login(LoginDto(phone, pin))
+        userDao.upsertUser(response.toUserEntity())
+        return response
+    }
+
+    suspend fun registerRemote(nom: String, phone: String, pin: String): UserResponse {
+        val response = userApi.registerUser(UserDto(nom, phone, pin))
+        userDao.upsertUser(response.toUserEntity())
+        return response
+    }
+
     suspend fun getUserById(id: String): UserEntity? {
         return userDao.getUserById(id)
     }

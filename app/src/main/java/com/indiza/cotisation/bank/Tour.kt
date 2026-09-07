@@ -8,6 +8,10 @@ import com.indiza.cotisation.tontine.TontineMemberEntity
 import com.indiza.cotisation.tontinemembers.ParticipantWithParts
 
 
+import com.indiza.cotisation.tontine.TontineMemberWithUser
+import androidx.room.Embedded
+import androidx.room.Relation
+
 @Entity(
     tableName = "caisse_tours",
     foreignKeys = [
@@ -45,5 +49,30 @@ data class BeneficiaireSelection(
 
 data class CreateTourUiState(
     val caisse: CaisseEntity? = null,
-    val participants: List<ParticipantWithParts> = emptyList()
+    val cycle: CycleEntity? = null,
+    val participants: List<ParticipantWithParts> = emptyList(),
+    val partsEncaisseesMap: Map<Long, Int> = emptyMap(),
+    val soldeGlobal: Long = 0L,
+    val totalPartsCaisse: Int = 0,
+    val ordreFige: Boolean = false
+)
+
+data class TourWithBeneficiaires(
+    @Embedded val tour: TourEntity,
+    @Relation(
+        entity = TourBeneficiaireEntity::class,
+        parentColumn = "id",
+        entityColumn = "tourId"
+    )
+    val beneficiaires: List<BeneficiaireWithMember>
+)
+
+data class BeneficiaireWithMember(
+    @Embedded val tourBeneficiaire: TourBeneficiaireEntity,
+    @Relation(
+        entity = TontineMemberEntity::class,
+        parentColumn = "memberId",
+        entityColumn = "id"
+    )
+    val member: TontineMemberWithUser
 )

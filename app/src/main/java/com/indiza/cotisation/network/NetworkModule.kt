@@ -26,7 +26,8 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
 
-    private const val BASE_URL = "https://api.tontine.app/"
+    private const val DEFAULT_URL = "http://192.168.1.50:3000/"
+    private const val KEY_API_URL = "api_base_url"
 
     @Provides
     @Singleton
@@ -44,11 +45,18 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideRetrofit(okHttpClient: OkHttpClient, moshi: Moshi): Retrofit = Retrofit.Builder()
-        .baseUrl(BASE_URL)
-        .client(okHttpClient)
-        .addConverterFactory(MoshiConverterFactory.create(moshi))
-        .build()
+    fun provideRetrofit(
+        okHttpClient: OkHttpClient, 
+        moshi: Moshi,
+        prefs: SharedPreferences
+    ): Retrofit {
+        val baseUrl = prefs.getString(KEY_API_URL, DEFAULT_URL) ?: DEFAULT_URL
+        return Retrofit.Builder()
+            .baseUrl(baseUrl)
+            .client(okHttpClient)
+            .addConverterFactory(MoshiConverterFactory.create(moshi))
+            .build()
+    }
 
     @Provides
     @Singleton
