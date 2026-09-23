@@ -14,7 +14,8 @@ import com.indiza.cotisation.users.UserEntity
     tableName = "tontine_members",
     indices = [
         Index("tontineId", "userId", unique = true),
-        Index("tontineId", "phone", unique = true)
+        Index("tontineId", "phone", unique = true),
+        Index("remoteId", unique = true)
     ],
     foreignKeys = [
         ForeignKey(
@@ -36,6 +37,7 @@ data class TontineMemberEntity(
     val id: Long = 0L,
     val tontineId: Long,
     val userId: String? = null,
+    val remoteId: String? = null,
     val matricule: String? = null,
     val nomSaisi: String,
     val phone: String,

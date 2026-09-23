@@ -53,6 +53,8 @@ import com.indiza.cotisation.bank.TransactionViewModel
 import com.indiza.cotisation.caisses.CaisseDetailScreen
 import com.indiza.cotisation.caisses.CaisseDetailViewModel
 import com.indiza.cotisation.caisses.ManageParticipantsScreen
+import com.indiza.cotisation.invitations.JoinInvitationScreen
+import com.indiza.cotisation.invitations.JoinRequestsScreen
 import com.indiza.cotisation.reports.AttendanceReportScreen
 import com.indiza.cotisation.reports.CycleClosureReportScreen
 import com.indiza.cotisation.reports.FinanceReportScreen
@@ -71,6 +73,7 @@ import com.indiza.cotisation.tontinemembers.MemberActivityScreen
 import com.indiza.cotisation.tontinemembers.MemberActivityViewModel
 import com.indiza.cotisation.tools.CosmicBackground
 import com.indiza.cotisation.users.AuthScreen
+import com.indiza.cotisation.users.ProfileScreen
 import com.indiza.cotisation.users.SearchTontineScreen
 import com.indiza.cotisation.users.SessionViewModel
 import kotlinx.coroutines.launch
@@ -147,7 +150,11 @@ fun AppEntryPoint(connectivityObserver: ConnectivityObserver) {
             composable(Screen.SearchTontine.route) {
                 SearchTontineScreen(
                     viewModel = hiltViewModel(),
+                    sessionViewModel = sessionViewModel,
+                    notifViewModel = hiltViewModel(),
+                    adminViewModel = hiltViewModel(),
                     onNavigateToList = { navController.navigate(Screen.ListTontine.route) },
+                    onNavigateToProfile = { navController.navigate(Screen.Profile.route) },
                     onCreateTontineWhenAuthenticated = { navController.navigate(Screen.CreateTontine.route) },
                     onBack = { TODO() },
                     onNavigateToAuth = {
@@ -160,6 +167,9 @@ fun AppEntryPoint(connectivityObserver: ConnectivityObserver) {
                             pendingJoinTontine = tontine
                             navController.navigate(Screen.Auth.route)
                         }
+                    },
+                    onNavigateToReceipt = { txId ->
+                        navController.navigate("receipt/$txId")
                     },
                     onLogout = {
                         sessionViewModel.logout()
@@ -177,6 +187,9 @@ fun AppEntryPoint(connectivityObserver: ConnectivityObserver) {
                     viewModel = hiltViewModel(),
                     onEditClick = { id ->
                         navController.navigate(Screen.EditTontine.createRoute(id))
+                    },
+                    onProfileClick = {
+                        navController.navigate(Screen.Profile.route)
                     }
                 )
             }
@@ -188,6 +201,7 @@ fun AppEntryPoint(connectivityObserver: ConnectivityObserver) {
                 val id = backStackEntry.arguments?.getLong("tontineId") ?: 0L
                 TontineDetailScreen(
                     tontineId = id,
+                    navController = navController,
                     onBack = { navController.popBackStack() },
                     onCaisseClick = { caisseId, cycleId ->
                         navController.navigate(Screen.CaisseDetail.createRoute(caisseId, cycleId))
@@ -632,6 +646,36 @@ fun AppEntryPoint(connectivityObserver: ConnectivityObserver) {
                 )
             }
 
+            // --- INVITATIONS & DEEP LINKING ---
+            composable(
+                route = Screen.JoinInvitation.route,
+                arguments = listOf(navArgument("code") { type = NavType.StringType }),
+                deepLinks = listOf(
+                    androidx.navigation.navDeepLink { uriPattern = "cotisation://join?code={code}" },
+                    androidx.navigation.navDeepLink { uriPattern = "http://10.0.2.2:3000/join?code={code}" },
+                    androidx.navigation.navDeepLink { uriPattern = "http://192.168.1.50:3000/join?code={code}" }
+                )
+            ) { backStackEntry ->
+                val code = backStackEntry.arguments?.getString("code") ?: ""
+                JoinInvitationScreen(
+                    inviteCode = code,
+                    onBack = { navController.popBackStack() },
+                    onNavigateToAuth = { navController.navigate(Screen.Auth.route) },
+                    onSuccess = { navController.navigate(Screen.SearchTontine.route) }
+                )
+            }
+
+            composable(
+                route = "join_requests/{tontineId}",
+                arguments = listOf(navArgument("tontineId") { type = NavType.LongType })
+            ) { backStack ->
+                val id = backStack.arguments?.getLong("tontineId") ?: 0L
+                JoinRequestsScreen(
+                    tontineId = id,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
             composable(
                 route = "member_activity/{tontineId}/{memberId}",
                 arguments = listOf(
@@ -645,6 +689,42 @@ fun AppEntryPoint(connectivityObserver: ConnectivityObserver) {
                     tontineId = tid,
                     memberId = mid,
                     onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(
+                route = "receipt/{txId}",
+                arguments = listOf(navArgument("txId") { type = NavType.StringType })
+            ) { backStack ->
+                val txId = backStack.arguments?.getString("txId") ?: ""
+                com.indiza.cotisation.users.ReceiptScreen(
+                    transactionId = txId,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(
+                route = "meeting_chat/{tontineId}",
+                arguments = listOf(navArgument("tontineId") { type = NavType.StringType })
+            ) { backStack ->
+                val tontineId = backStack.arguments?.getString("tontineId") ?: ""
+                com.indiza.cotisation.tontine.MeetingChatScreen(
+                    tontineId = tontineId,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+            composable(Screen.Profile.route) {
+                ProfileScreen(
+                    onBack = { navController.popBackStack() },
+                    onLogout = {
+                        sessionViewModel.logout()
+                        navController.navigate(Screen.Auth.route) {
+                            popUpTo(0)
+                        }
+                    },
+                    onTontineClick = { id ->
+                        navController.navigate(Screen.TontineDetail.createRoute(id))
+                    }
                 )
             }
         }

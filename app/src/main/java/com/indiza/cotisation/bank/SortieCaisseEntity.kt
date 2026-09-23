@@ -1,7 +1,10 @@
 package com.indiza.cotisation.bank
 
 import androidx.room.Entity
+import androidx.room.ForeignKey
 import androidx.room.PrimaryKey
+import com.indiza.cotisation.caisses.CaisseEntity
+import com.indiza.cotisation.tontine.TontineMemberEntity
 
 enum class MotifSortie {
     DEPART_TONTINE,
@@ -12,7 +15,13 @@ enum class MotifSortie {
     AUTRE
 }
 
-@Entity(tableName = "sorties_caisse")
+@Entity(
+    tableName = "sorties_caisse",
+    foreignKeys = [
+        ForeignKey(entity = CaisseEntity::class, parentColumns = ["id"], childColumns = ["caisseId"], onDelete = ForeignKey.CASCADE),
+        ForeignKey(entity = TontineMemberEntity::class, parentColumns = ["id"], childColumns = ["memberId"], onDelete = ForeignKey.CASCADE)
+    ]
+)
 data class SortieCaisseEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0L,

@@ -8,6 +8,7 @@ import com.indiza.cotisation.caisses.CaisseDao
 import com.indiza.cotisation.caisses.CaisseDetailUiState
 import com.indiza.cotisation.caisses.CaisseEntity
 import com.indiza.cotisation.caisses.FrequenceCotisation
+import com.indiza.cotisation.caisses.TypeInteret
 import com.indiza.cotisation.caisses.prochaineDate
 import com.indiza.cotisation.tontine.TontineMemberDao
 import com.indiza.cotisation.tontine.TontineMemberWithUser
@@ -32,6 +33,9 @@ class TransactionViewModel @Inject constructor(
     val tourDao: TourDao,
     val cycleDao: CycleDao,
     val tontineMemberDao: TontineMemberDao,
+    val pretDao: com.indiza.cotisation.bank.PretDao,
+    private val sessionDao: com.indiza.cotisation.users.SessionDao,
+    private val repository: com.indiza.cotisation.tontine.TontineRepository,
     savedStateHandle: SavedStateHandle
 ) : ViewModel()
 {
@@ -73,32 +77,68 @@ class TransactionViewModel @Inject constructor(
     }
 
 
+    private suspend fun checkFrequencyStrict(caisse: CaisseEntity, memberId: Long, userId: String): Result<Unit> {
+        if (!caisse.respecterFrequenceStrictement) return Result.success(Unit)
+
+        val lastDate = transactionDao.getLastContributionDate(caisse.id, memberId)
+        if (lastDate != null) {
+            if (!isPeriodElapsed(caisse.frequence, lastDate)) {
+                val tontine = caisseDao.getTontineByCaisse(caisse.id)
+                val userRole = tontineMemberDao.getUserRoleInTontine(caisse.tontineId, userId)
+                val isInitiator = tontine?.creatorId == userId
+                val isTreasurer = userRole == com.indiza.cotisation.users.Role.TRESORIER || userRole == com.indiza.cotisation.users.Role.INITIATEUR
+
+                if (!isInitiator && !isTreasurer) {
+                    val remaining = getRemainingTimeMessage(caisse.frequence, lastDate)
+                    return Result.failure(Exception("Membre ID $memberId : prochain encaissement possible dans $remaining. (Dernière le : ${formatDate(lastDate)})"))
+                }
+            }
+        }
+        return Result.success(Unit)
+    }
+
     fun validerEnMasse(
         caisse: CaisseEntity,
         action: CaisseAction,
         participants: List<ParticipantWithParts>,
-        cycleId: Long
+        cycleId: Long,
+        onResult: (Result<Unit>) -> Unit = {}
     ) = viewModelScope.launch {
+        val session = sessionDao.getCurrentSession()
+        val userId = session?.userId ?: ""
         val montantUnitaire = caisse.montantFixe ?: 0L
         
-        // Calcul du nombre total de parts pour le montant de la cagnotte
+        // 1. Calcul du nombre total de parts pour le montant de la cagnotte
         val allMembers = tontineMemberDao.getParticipantsByCaisseSnapshot(caisse.id)
-        val totalPartsCaisse = allMembers.sumOf { it.nombreParts }
-        val montantCagnotte = montantUnitaire * totalPartsCaisse
+        val totalParticipants = allMembers.size
+        val montantCagnotteUnePart = montantUnitaire * totalParticipants
 
         if (action == CaisseAction.TOUR_ENCAISSER) {
-            // Vérification du solde global avant validation en masse
+            // ... (keep existing check)
             val soldeActuel = transactionDao.getSoldeActuel(caisse.id) ?: 0L
-            val totalNecessaire = participants.size * montantCagnotte
+            val totalNecessaire = participants.sumOf { it.nombreParts * montantCagnotteUnePart }
             
             if (soldeActuel < totalNecessaire) {
-                println("DEBUG_CAGNOTTE: Solde insuffisant pour validation en masse ($soldeActuel < $totalNecessaire)")
+                onResult(Result.failure(Exception("Solde insuffisant pour validation en masse")))
                 return@launch
             }
         }
 
+        // --- NOUVEAU : Vérification fréquence pour TOUS les participants avant de commencer ---
+        if (action == CaisseAction.COTISATION && caisse.respecterFrequenceStrictement) {
+            participants.forEach { p ->
+                val check = checkFrequencyStrict(caisse, p.memberWithUser.member.id, userId)
+                if (check.isFailure) {
+                    withContext(Dispatchers.Main) { onResult(check) }
+                    return@launch
+                }
+            }
+        }
+
         participants.forEach { participant ->
+            // ... (keep existing loop content)
             val memberId = participant.memberWithUser.member.id
+            val montantCagnotteMembre = montantCagnotteUnePart * participant.nombreParts
 
             when (action) {
                 CaisseAction.COTISATION -> {
@@ -127,7 +167,7 @@ class TransactionViewModel @Inject constructor(
                             TourEntity(
                                 cycleId = cycleId,
                                 numeroTour = prochainNumero,
-                                montantTotalDistribue = montantCagnotte,
+                                montantTotalDistribue = montantCagnotteMembre,
                                 estTermine = true
                             )
                         )
@@ -135,8 +175,8 @@ class TransactionViewModel @Inject constructor(
                             TourBeneficiaireEntity(
                                 tourId = tourId,
                                 memberId = memberId,
-                                nombrePartsAttribuees = 1,
-                                montantRecu = montantCagnotte
+                                nombrePartsAttribuees = participant.nombreParts,
+                                montantRecu = montantCagnotteMembre
                             )
                         )
                     }
@@ -146,10 +186,10 @@ class TransactionViewModel @Inject constructor(
                         TransactionEntity(
                             caisseId = caisse.id,
                             memberId = memberId,
-                            montant = -montantCagnotte,
+                            montant = -montantCagnotteMembre,
                             type = TransactionType.TOUR_ENCAISSER,
                             cycleId = cycleId,
-                            motif = "Remise de cagnotte groupée (Cycle n°$cycleId)"
+                            motif = "Remise de cagnotte groupée (Cycle n°$cycleId, ${participant.nombreParts} parts)"
                         )
                     )
                 }
@@ -159,8 +199,35 @@ class TransactionViewModel @Inject constructor(
     }
 
     fun cloturerEtPreparerSuivant(caisseId: Long, cycleActuel: CycleEntity) = viewModelScope.launch {
-        // 1. On récupère d'abord l'objet Caisse pour connaître sa fréquence
+        if (cycleActuel.estCloture) return@launch
+
+        // 1. On récupère d'abord l'objet Caisse
         val caisse = caisseDao.getCaisseById(caisseId) ?: return@launch
+        
+        // --- NOUVEAU : Vérification de la clôture définitive (Redistribution complète) ---
+        if (caisse.redistribution) {
+            val totalPartsCaisse = transactionDao.getTotalPartsCaisse(caisseId) ?: 0
+            val partsAttribuees = tourDao.getTotalPartsDistribueesGlobal(caisseId).first() ?: 0
+            
+            if (partsAttribuees >= totalPartsCaisse && totalPartsCaisse > 0) {
+                // Tout le monde a bouffé : On clôture définitivement au lieu de créer un nouveau cycle
+                cloturerCaisseDefinitivement(cycleActuel) {}
+                return@launch
+            }
+        }
+
+        // Vérifier si un cycle suivant n'existe pas déjà (sécurité double-clic)
+        val nextNum = cycleActuel.numeroCycle + 1
+        val allCycles = cycleDao.getAllCycles(caisseId).first()
+        val existingNext = allCycles.find { it.numeroCycle == nextNum }
+        
+        if (existingNext != null) {
+            // Déjà créé, on clôture juste le précédent s'il ne l'est pas
+            cycleDao.updateCycle(cycleActuel.copy(estCloture = true, dateFin = System.currentTimeMillis()))
+            _nouveauCycleId.value = existingNext.id
+            return@launch
+        }
+
         // 1. Clôturer le cycle actuel
         cycleDao.updateCycle(cycleActuel.copy(estCloture = true, dateFin = System.currentTimeMillis()))
 
@@ -181,8 +248,64 @@ class TransactionViewModel @Inject constructor(
         _nouveauCycleId.value = id
     }
 
+    fun cloturerCaisseDefinitivement(cycleActuel: CycleEntity, onSuccess: () -> Unit) = viewModelScope.launch {
+        cycleDao.updateCycle(cycleActuel.copy(estCloture = true, dateFin = System.currentTimeMillis()))
+        
+        // Mettre à jour le statut de la caisse
+        val caisse = caisseDao.getById(cycleActuel.caisseId)
+        if (caisse != null) {
+            caisseDao.updateCaisse(caisse.copy(statut = com.indiza.cotisation.caisses.CaisseStatus.CLOTUREE))
+        }
+        
+        withContext(Dispatchers.Main) { onSuccess() }
+    }
+
     fun clearNavigationRequest() {
         _nouveauCycleId.value = null
+    }
+
+    private fun isPeriodElapsed(frequence: FrequenceCotisation, lastDate: Long): Boolean {
+        val now = System.currentTimeMillis()
+        val calendar = Calendar.getInstance().apply { timeInMillis = lastDate }
+        
+        when (frequence) {
+            FrequenceCotisation.JOURNALIER -> calendar.add(Calendar.DAY_OF_YEAR, 1)
+            FrequenceCotisation.HEBDOMADAIRE -> calendar.add(Calendar.WEEK_OF_YEAR, 1)
+            FrequenceCotisation.MENSUEL -> calendar.add(Calendar.MONTH, 1)
+            FrequenceCotisation.TRIMESTRIEL -> calendar.add(Calendar.MONTH, 3)
+            FrequenceCotisation.SEMESTRIEL -> calendar.add(Calendar.MONTH, 6)
+            FrequenceCotisation.ANNUEL -> calendar.add(Calendar.YEAR, 1)
+            FrequenceCotisation.LIBRE -> return true
+        }
+        
+        return now >= calendar.timeInMillis
+    }
+
+    private fun getRemainingTimeMessage(frequence: FrequenceCotisation, lastDate: Long): String {
+        val calendar = Calendar.getInstance().apply { timeInMillis = lastDate }
+        when (frequence) {
+            FrequenceCotisation.JOURNALIER -> calendar.add(Calendar.DAY_OF_YEAR, 1)
+            FrequenceCotisation.HEBDOMADAIRE -> calendar.add(Calendar.WEEK_OF_YEAR, 1)
+            FrequenceCotisation.MENSUEL -> calendar.add(Calendar.MONTH, 1)
+            FrequenceCotisation.TRIMESTRIEL -> calendar.add(Calendar.MONTH, 3)
+            FrequenceCotisation.SEMESTRIEL -> calendar.add(Calendar.MONTH, 6)
+            FrequenceCotisation.ANNUEL -> calendar.add(Calendar.YEAR, 1)
+            FrequenceCotisation.LIBRE -> return ""
+        }
+        
+        val nextPossible = calendar.timeInMillis
+        val diff = nextPossible - System.currentTimeMillis()
+        if (diff <= 0) return ""
+        
+        val hours = diff / (3600 * 1000)
+        val minutes = (diff % (3600 * 1000)) / (60 * 1000)
+        val seconds = (diff % (60 * 1000)) / 1000
+        
+        return "${hours}h ${minutes}min ${seconds}s"
+    }
+
+    private fun formatDate(timestamp: Long): String {
+        return java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date(timestamp))
     }
 
     suspend fun getInfoFinanciereCagnotte(caisseId: Long, cycleId: Long): Pair<Long, Long> {
@@ -194,35 +317,84 @@ class TransactionViewModel @Inject constructor(
     suspend fun getCagnotteDetails(
         caisse: CaisseEntity,
         participant: ParticipantWithParts,
-        cycleId: Long
+        cycleId: Long,
+        nbPartsAliquider: Int = 1
     ): CagnotteDetails {
-        val memberId = participant.memberWithUser.member.id
+        val memberId = participant.member.id
         val montantFixe = caisse.montantFixe ?: 0L
+        println("DEBUG_DETAILS: memberId=$memberId, caisseId=${caisse.id}, cycleId=$cycleId")
 
-        // 1. BRUT (Jackpot théorique du cycle)
-        // Somme des parts des membres participant à cette caisse
-        val totalPartsCaisse = transactionDao.getTotalPartsCaisse(caisse.id) ?: 0
-        val montantBrut = montantFixe * participant.nombreParts * totalPartsCaisse
+        // 1. BRUT (Jackpot théorique du cycle pour le nombre de parts choisi)
+        val totalParticipants = tontineMemberDao.getParticipantsCount(caisse.id)
+        val montantBrut = montantFixe * nbPartsAliquider * totalParticipants
 
         // 2. ECHECS (Retards de cotisations sur la durée de la caisse)
         val nbCyclesEcoules = transactionDao.getNombreCyclesEcoules(caisse.id)
-        val attenduCumule = nbCyclesEcoules * (montantFixe * participant.nombreParts)
+        val attenduCumule = nbCyclesEcoules.toLong() * (montantFixe * participant.nombreParts)
         val reelCumule = transactionDao.getTotalCotiseReel(caisse.id, memberId) ?: 0L
         val echecs = if (attenduCumule > reelCumule) attenduCumule - reelCumule else 0L
+        println("DEBUG_DETAILS: nbCyclesEcoules=$nbCyclesEcoules, attenduCumule=$attenduCumule, reelCumule=$reelCumule, echecs=$echecs")
 
         // 3. DETTES (Prêts et intérêts en cours)
-        val detteSum = transactionDao.getEtatDetteMembre(memberId, caisse.id).first() ?: 0L
+        val detteSum = transactionDao.getEtatDetteMembre(caisse.id, memberId).first() ?: 0L
         val dettes = if (detteSum < 0) -detteSum else 0L
+        println("DEBUG_DETAILS: dettes=$dettes (Sum was $detteSum)")
 
-        // 4. PENALITES
+        // 4. PENALITES (Déjà enregistrées dans l'historique)
         val penalitesSum = transactionDao.getSommePenalitesMembre(memberId, caisse.id).first() ?: 0L
-        val penalites = if (penalitesSum < 0) -penalitesSum else 0L
+        var totalPenalites = if (penalitesSum < 0) -penalitesSum else 0L
+        println("DEBUG_DETAILS: penalitesSum=$penalitesSum")
+
+        // 5. AJOUT DES PÉNALITÉS "DÉDUCTIBLES" (Potentielles pour le tour actuel)
+        
+        // A. Pénalité d'échec
+        if (caisse.penaliteEchecFixe != null && echecs > 0) {
+            val aDejaEchec = transactionDao.aDejaPenaliteTypeCycle(memberId, caisse.id, cycleId, TransactionType.PENALITE_ECHEC)
+            println("DEBUG_DETAILS: aDejaEchecTypePENALITE_ECHEC=$aDejaEchec")
+            if (!aDejaEchec) {
+                totalPenalites += caisse.penaliteEchecFixe
+            }
+        }
+
+        // B. Pénalité de retard (Découplée des échecs)
+        if (caisse.penaliteRetardFixe != null && caisse.dateLimiteJour != null) {
+            val jourLimite = caisse.dateLimiteJour
+            val calendar = Calendar.getInstance()
+            val jourActuel = calendar.get(Calendar.DAY_OF_MONTH)
+            println("DEBUG_DETAILS: jourActuel=$jourActuel, jourLimite=$jourLimite")
+
+            var estEnRetard = false
+            if (echecs > 0 && jourActuel > jourLimite) {
+                estEnRetard = true
+            } else {
+                // Vérifier si la dernière cotisation enregistrée était après la limite
+                val lastCotisDate = transactionDao.getLastContributionDate(caisse.id, memberId)
+                if (lastCotisDate != null) {
+                    val calCotis = Calendar.getInstance().apply { timeInMillis = lastCotisDate }
+                    val dayCotis = calCotis.get(Calendar.DAY_OF_MONTH)
+                    println("DEBUG_DETAILS: lastCotisDate=$lastCotisDate, dayOfMonth=$dayCotis")
+                    if (dayCotis > jourLimite) {
+                        estEnRetard = true
+                    }
+                }
+            }
+
+            if (estEnRetard) {
+                val aDejaRetard = transactionDao.aDejaPenaliteTypeCycle(memberId, caisse.id, cycleId, TransactionType.PENALITE_RETARD)
+                println("DEBUG_DETAILS: aDejaRetardTypePENALITE_RETARD=$aDejaRetard")
+                if (!aDejaRetard) {
+                    totalPenalites += caisse.penaliteRetardFixe
+                }
+            }
+        }
+
+        println("DEBUG_DETAILS: Final totalPenalites=$totalPenalites")
 
         return CagnotteDetails(
             brut = montantBrut,
             dettes = dettes,
             echecs = echecs,
-            penalites = penalites
+            penalites = totalPenalites
         )
     }
 
@@ -243,10 +415,45 @@ class TransactionViewModel @Inject constructor(
         montant: Long,
         cycleId: Long,
         appliquerRetard: Boolean,
-        appliquerEchec: Boolean
+        appliquerEchec: Boolean,
+        onResult: (Result<Unit>) -> Unit = {}
     ) = viewModelScope.launch {
+        val session = sessionDao.getCurrentSession()
+        val userId = session?.userId ?: ""
+        
+        // --- VÉRIFICATION DE LA FRÉQUENCE STRICTE ---
+        val freqCheck = checkFrequencyStrict(caisse, memberId, userId)
+        if (freqCheck.isFailure) {
+            withContext(Dispatchers.Main) { onResult(freqCheck) }
+            return@launch
+        }
 
-        // 1. Transaction principale (Cotisation)
+        val tontine = caisseDao.getTontineByCaisse(caisse.id)
+
+        if (tontine?.isOnline == true && tontine.remoteId != null) {
+            val member = tontineMemberDao.getMemberById(memberId)
+            val cycle = cycleDao.getCycleById(cycleId)
+            
+            val transactionDto = com.indiza.cotisation.tontine.TransactionApiDto(
+                id = java.util.UUID.randomUUID().toString(),
+                caisseId = caisse.remoteId!!,
+                memberId = member?.userId ?: "", 
+                cycleId = cycle?.id.toString(), 
+                montant = montant,
+                type = TransactionType.COTISATION.name,
+                motif = "Cotisation en ligne",
+                validatedById = userId,
+                dateTransaction = System.currentTimeMillis()
+            )
+            
+            try {
+                repository.createOnlineTransaction(transactionDto)
+            } catch (e: Exception) {
+                // Si échec en ligne, on peut soit bloquer soit mettre en queue (mais Duo Mode = Online si online)
+            }
+        }
+
+        // 1. Transaction principale locale (Toujours pour le cache/historique rapide)
         transactionDao.insertTransaction(
             TransactionEntity(
                 caisseId = caisse.id,
@@ -254,18 +461,19 @@ class TransactionViewModel @Inject constructor(
                 montant = montant,
                 type = TransactionType.COTISATION,
                 cycleId = cycleId,
+                validatedById = userId
             )
         )
 
-        // 2. Pénalité Retard
+        // 2. Pénalités
         if (appliquerRetard && caisse.penaliteRetardFixe != null) {
             transactionDao.insertTransaction(createPenaltyEntry(caisse, memberId, cycleId, caisse.penaliteRetardFixe!!, TransactionType.PENALITE_RETARD))
         }
-        // 3. Pénalité Échec
         if (appliquerEchec && caisse.penaliteEchecFixe != null) {
             transactionDao.insertTransaction(createPenaltyEntry(caisse, memberId, cycleId, caisse.penaliteEchecFixe!!, TransactionType.PENALITE_ECHEC))
         }
 
+        withContext(Dispatchers.Main) { onResult(Result.success(Unit)) }
     }
 
     fun loadCreateTourData(caisseId: Long, cycleId: Long) = viewModelScope.launch {
@@ -307,6 +515,7 @@ class TransactionViewModel @Inject constructor(
             partsEncaisseesMap = partsEncaisseesCumulees,
             soldeGlobal = solde,
             totalPartsCaisse = totalPartsCaisse,
+            totalParticipants = allParticipants.size,
             ordreFige = caisse?.ordreFige ?: false
         )
     }
@@ -316,16 +525,27 @@ class TransactionViewModel @Inject constructor(
     fun enregistrerCagnotte(
         caisseId: Long,
         memberId: Long,
-        montant: Long,
+        montantCaisse: Long, // Montant "Source" (Brut - Echecs si inclus)
         cycleId: Long,
         nbParts: Int = 1,
-        isClose: Boolean,
+        montantDettes: Long = 0L,
+        montantPenalites: Long = 0L,
+        montantEchecs: Long = 0L,
+        isOnline: Boolean = false,
         onSuccess: () -> Unit
     ) = viewModelScope.launch {
-        // 1. Vérification du solde
+        val caisse = caisseDao.getCaisseById(caisseId) ?: return@launch
+        val fraisCaisseTotal = (caisse.fraisCaisse ?: 0L) * nbParts
+        
+        // On ne soustrait PAS montantEchecs ici car montantCaisse est déjà (Brut - Echecs)
+        val montantNet = montantCaisse - montantDettes - montantPenalites - fraisCaisseTotal
+
+        logCagnotte("DEBUT_REMISE", "Membre $memberId, Montant Brut: $montantCaisse, Net: $montantNet", isOnline)
+
+        // 1. Vérification du solde (le montantCaisse doit être disponible)
         val soldeActuel = transactionDao.getSoldeActuel(caisseId) ?: 0L
-        if (soldeActuel < montant) {
-            println("DEBUG_CAGNOTTE: Solde insuffisant ($soldeActuel < $montant)")
+        if (soldeActuel < montantCaisse) {
+            logCagnotte("ERREUR_SOLDE", "Solde insuffisant ($soldeActuel < $montantCaisse)", isOnline)
             return@launch
         }
 
@@ -343,36 +563,121 @@ class TransactionViewModel @Inject constructor(
                 TourEntity(
                     cycleId = cycleId,
                     numeroTour = prochainNumero,
-                    montantTotalDistribue = montant,
-                    estTermine = true // Attribution directe
+                    montantTotalDistribue = montantNet,
+                    estTermine = true 
                 )
             )
         }
 
-        // 3. Enregistrer le bénéficiaire si c'est un nouveau tour (sinon il y est déjà)
         if (tourPlanifieId == null) {
             tourDao.insertBeneficiaire(
                 TourBeneficiaireEntity(
                     tourId = tourId,
                     memberId = memberId,
                     nombrePartsAttribuees = nbParts,
-                    montantRecu = montant
+                    montantRecu = montantNet
+                )
+            )
+        } else {
+             // Mettre à jour le montant reçu si c'était planifié
+             tourDao.updateMontantTour(tourPlanifieId, montantNet)
+             tourDao.updateMontantBeneficiaire(tourPlanifieId, memberId, montantNet)
+        }
+
+        val session = sessionDao.getCurrentSession()
+
+        // 4. Transaction financière : Sortie du montant réel de la caisse pour le tour
+        transactionDao.insertTransaction(
+            TransactionEntity(
+                caisseId = caisseId,
+                memberId = memberId,
+                montant = -montantCaisse, 
+                type = TransactionType.TOUR_ENCAISSER,
+                cycleId = cycleId,
+                validatedById = session?.userId,
+                motif = "Remise de la cagnotte (Cycle n°$cycleId, $nbParts parts) - Montant décaissé"
+            )
+        )
+
+        // 5. Récupération des frais de caisse
+        if (fraisCaisseTotal > 0) {
+            transactionDao.insertTransaction(
+                TransactionEntity(
+                    caisseId = caisseId,
+                    memberId = memberId,
+                    montant = fraisCaisseTotal,
+                    type = TransactionType.FRAIS_CAISSE,
+                    cycleId = cycleId,
+                    validatedById = session?.userId,
+                    motif = "Frais de caisse collectés ($nbParts parts)"
                 )
             )
         }
 
-        // 4. Transaction financière (C'est ICI que l'argent est réellement déduit)
-        val transaction = TransactionEntity(
-            caisseId = caisseId,
-            memberId = memberId,
-            montant = -montant, 
-            type = TransactionType.TOUR_ENCAISSER,
-            cycleId = cycleId,
-            motif = "Remise de la cagnotte (Cycle n°$cycleId, $nbParts parts) - Finalisation"
-        )
-        transactionDao.insertTransaction(transaction)
+        // 6. Remboursement des dettes si choisies
+        if (montantDettes > 0) {
+            transactionDao.insertTransaction(
+                TransactionEntity(
+                    caisseId = caisseId,
+                    memberId = memberId,
+                    montant = montantDettes,
+                    type = TransactionType.REMBOURSEMENT,
+                    cycleId = cycleId,
+                    validatedById = session?.userId,
+                    motif = "Remboursement de dette lors de la remise de cagnotte"
+                )
+            )
+        }
 
+        // 7. Paiement des pénalités si choisies
+        if (montantPenalites > 0) {
+            transactionDao.insertTransaction(
+                TransactionEntity(
+                    caisseId = caisseId,
+                    memberId = memberId,
+                    montant = montantPenalites,
+                    type = TransactionType.PENALITE_RETARD, // On utilise un type générique
+                    cycleId = cycleId,
+                    validatedById = session?.userId,
+                    motif = "Paiement des pénalités lors de la remise de cagnotte"
+                )
+            )
+        }
+
+        // 8. Régularisation des échecs si choisis
+        if (montantEchecs > 0) {
+            transactionDao.insertTransaction(
+                TransactionEntity(
+                    caisseId = caisseId,
+                    memberId = memberId,
+                    montant = montantEchecs,
+                    type = TransactionType.COTISATION,
+                    cycleId = cycleId,
+                    a_cotise = true,
+                    validatedById = session?.userId,
+                    motif = "Régularisation des échecs lors de la remise de cagnotte"
+                )
+            )
+            logCagnotte("ECHECS_REGULARISES", "Montant: $montantEchecs", isOnline)
+        }
+
+        logCagnotte("FIN_REMISE", "Succès pour membre $memberId", isOnline)
         withContext(Dispatchers.Main) { onSuccess() }
+    }
+
+    private fun logCagnotte(motif: String, details: String, isOnline: Boolean) {
+        val tag = "CAGNOTTE_LOG"
+        val fullMsg = "[$motif] $details"
+        
+        // Log Kotlin (Android Logcat)
+        println("$tag: $fullMsg")
+        
+        // Log Web (si en ligne)
+        if (isOnline) {
+            println("WEB_LOG: $fullMsg")
+            // Simulation d'envoi vers un service web de logging
+            // repository.sendRemoteLog(motif, details)
+        }
     }
 
     fun enregistrerRemiseCagnotteMultiParts(
@@ -429,8 +734,12 @@ class TransactionViewModel @Inject constructor(
         memberId: Long,
         montantVerse: Long,
         cycleId: Long,
-        estInteret: Boolean = false
+        estInteret: Boolean = false,
+        originCaisseId: Long? = null
     ) = viewModelScope.launch {
+        val session = sessionDao.getCurrentSession()
+        
+        // 1. Transaction dans la caisse actuelle (Réduit la dette)
         transactionDao.insertTransaction(
             TransactionEntity(
                 caisseId = caisseId,
@@ -438,9 +747,39 @@ class TransactionViewModel @Inject constructor(
                 montant = montantVerse,
                 cycleId = cycleId,
                 type = if (estInteret) TransactionType.INTERET else TransactionType.REMBOURSEMENT,
-                motif = if (estInteret) "Paiement des intérêts" else "Remboursement partiel/total capital"
+                motif = if (estInteret) "Paiement des intérêts" else "Remboursement principal",
+                validatedById = session?.userId
             )
         )
+
+        // 2. Si c'est du principal et qu'il y a une caisse d'origine, on transfère
+        if (!estInteret && originCaisseId != null && originCaisseId != caisseId) {
+            // Sortie de la caisse de prêt
+            transactionDao.insertTransaction(
+                TransactionEntity(
+                    caisseId = caisseId,
+                    memberId = memberId,
+                    montant = -montantVerse,
+                    cycleId = cycleId,
+                    type = TransactionType.TRANSFERT_SORTIE,
+                    motif = "Retour du principal à la caisse d'origine",
+                    validatedById = session?.userId
+                )
+            )
+            
+            // Entrée dans la caisse d'origine
+            transactionDao.insertTransaction(
+                TransactionEntity(
+                    caisseId = originCaisseId,
+                    memberId = memberId,
+                    montant = montantVerse,
+                    cycleId = cycleId, // TODO: find active cycle of target caisse?
+                    type = TransactionType.TRANSFERT_ENTREE,
+                    motif = "Récupération du principal d'un prêt",
+                    validatedById = session?.userId
+                )
+            )
+        }
     }
 
     fun enregistrerNonCotisation(
@@ -555,17 +894,59 @@ class TransactionViewModel @Inject constructor(
         montant: Long,
         cycleId: Long,
         moisDiffere: Int,
+        originCaisseId: Long? = null,
         onSuccess: () -> Unit
     ) = viewModelScope.launch(Dispatchers.IO) {
+        // 1. Transaction dans la caisse de prêt
         val transaction = TransactionEntity(
             caisseId = caisseId,
             memberId = memberId,
             cycleId = cycleId,
-            montant = -montant, // Un prêt est une sortie d'argent
+            montant = -montant,
             type = TransactionType.PRET,
             motif = if (moisDiffere > 0) "Prêt avec différé de $moisDiffere mois" else "Prêt simple"
         )
         transactionDao.insertTransaction(transaction)
+
+        // 2. Création de l'entité Prêt pour suivi
+        pretDao.insertPret(
+            PretEntity(
+                caisseId = caisseId,
+                memberId = memberId,
+                montantPrincipal = montant,
+                montantInterets = 0L, // Calculé lors du remboursement ou via taux
+                tauxInteretApplique = 0.0, // TODO: fetch from caisse
+                typeInteret = TypeInteret.SIMPLE,
+                dateEcheance = System.currentTimeMillis() + (30L * 24 * 3600 * 1000 * (moisDiffere + 1)),
+                moisDiffere = moisDiffere,
+                originCaisseId = originCaisseId
+            )
+        )
+
+        // 3. Si origine différente, on sort de l'origine pour entrer dans la caisse de prêt
+        if (originCaisseId != null && originCaisseId != caisseId) {
+            transactionDao.insertTransaction(
+                TransactionEntity(
+                    caisseId = originCaisseId,
+                    memberId = memberId,
+                    cycleId = cycleId,
+                    montant = -montant,
+                    type = TransactionType.TRANSFERT_SORTIE,
+                    motif = "Financement prêt caisse"
+                )
+            )
+            transactionDao.insertTransaction(
+                TransactionEntity(
+                    caisseId = caisseId,
+                    memberId = memberId,
+                    cycleId = cycleId,
+                    montant = montant,
+                    type = TransactionType.TRANSFERT_ENTREE,
+                    motif = "Import fonds financement prêt"
+                )
+            )
+        }
+
         withContext(Dispatchers.Main) {
             onSuccess()
         }
@@ -584,6 +965,10 @@ class TransactionViewModel @Inject constructor(
         return transactionDao.getTransactionsWithMemberByCaisse(caisseId)
     }
 
+    suspend fun getOriginCaisseId(memberId: Long, caisseId: Long): Long? {
+        return pretDao.getActivePret(memberId, caisseId)?.originCaisseId
+    }
+
     fun validerTourComplet(
         caisseId: Long,
         cycleId: Long,
@@ -597,14 +982,14 @@ class TransactionViewModel @Inject constructor(
         val caisse = caisseDao.getCaisseById(caisseId) ?: return@launch
         val montantUnitaire = caisse.montantFixe ?: 0L
         
-        // 1. Calculer le nombre total de parts dans la caisse
+        // 1. Calculer le nombre de participants dans la caisse
         val allParticipants = tontineMemberDao.getParticipantsByCaisseSnapshot(caisseId)
-        val totalPartsCaisse = allParticipants.sumOf { it.nombreParts }
+        val totalParticipants = allParticipants.size
 
         // 2. Créer un tour PAR bénéficiaire pour permettre une validation individuelle ultérieure
         selections.forEach { (participant, partsLiquidees) ->
             val prochainNumero = tourDao.countToursByCycle(cycleId) + 1
-            val montantMembre = montantUnitaire * totalPartsCaisse * partsLiquidees
+            val montantMembre = montantUnitaire * totalParticipants * partsLiquidees
             
             println("DEBUG_TOUR: Création Tour n°$prochainNumero pour ${participant.member.nomSaisi}")
             println("DEBUG_TOUR:   - Montant total prévu: $montantMembre")
@@ -671,4 +1056,43 @@ class TransactionViewModel @Inject constructor(
         return tourDao.getPartsPlanifieesParMembre(memberId, cycleId)
     }
 
+    fun getTontineMembers(tontineId: Long): Flow<List<TontineMemberWithUser>> {
+        return tontineMemberDao.getTontineMembersWithUsers(tontineId)
+    }
+
+    fun enregistrerMouvementManuel(
+        caisseId: Long,
+        cycleId: Long,
+        montant: Long,
+        type: TransactionType,
+        motif: String,
+        memberId: Long? = null,
+        onSuccess: () -> Unit
+    ) = viewModelScope.launch {
+        val session = sessionDao.getCurrentSession()
+        val userId = session?.userId
+        
+        // Si c'est une sortie, le montant doit être négatif
+        val finalAmount = if (type == TransactionType.SORTIE || type == TransactionType.TRANSFERT_SORTIE || type == TransactionType.SORTIE_SECOURS) -montant else montant
+        
+        // Si memberId n'est pas fourni, on prend l'utilisateur actuel comme "responsable"
+        val effectiveMemberId = memberId ?: tontineMemberDao.getMemberEntity(
+            tontineId = caisseDao.getCaisseById(caisseId)?.tontineId ?: 0L,
+            userId = userId ?: ""
+        )?.id ?: 0L
+
+        transactionDao.insertTransaction(
+            TransactionEntity(
+                caisseId = caisseId,
+                memberId = effectiveMemberId,
+                cycleId = cycleId,
+                montant = finalAmount,
+                type = type,
+                motif = motif,
+                validatedById = userId
+            )
+        )
+        
+        withContext(Dispatchers.Main) { onSuccess() }
+    }
 }

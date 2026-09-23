@@ -85,7 +85,8 @@ fun CreateTourScreen(
     }
 
     // Logique de calcul du maximum possible selon le solde
-    val potUnitaire = (caisse.montantFixe ?: 0L) * state.totalPartsCaisse
+    // Une part = Montant Fixe * Nombre de participants (membres)
+    val potUnitaire = (caisse.montantFixe ?: 0L) * state.totalParticipants
     val maxPotsPossibles = if (potUnitaire > 0) (state.soldeGlobal / potUnitaire).toInt() else 0
     val totalPartsSelectionnees = partsMap.values.sum()
     val peutAjouterDutravail = totalPartsSelectionnees < maxPotsPossibles

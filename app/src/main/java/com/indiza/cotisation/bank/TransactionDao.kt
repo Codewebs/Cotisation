@@ -120,6 +120,10 @@ interface TransactionDao {
 
     @Query("SELECT SUM(montant) FROM transactions WHERE caisseId = :caisseId")
     suspend fun getSoldeActuel(caisseId: Long): Long?
+
+    @Query("SELECT COUNT(*) FROM transactions WHERE caisseId = :caisseId")
+    suspend fun getTransactionsCount(caisseId: Long): Int
+
     @Query("""
     SELECT 
         (SELECT COUNT(id) FROM caisse_cycles WHERE caisseId = :caisseId AND estCloture = 1) + 1 
@@ -166,6 +170,13 @@ interface TransactionDao {
         AND type IN ('PENALITE_RETARD', 'PENALITE_ECHEC')
     """)
     fun getSommePenalitesMembre(memberId: Long, caisseId: Long): Flow<Long?>
+
+    @Query("""
+        SELECT COUNT(*) > 0 FROM transactions 
+        WHERE memberId = :memberId AND caisseId = :caisseId 
+        AND cycleId = :cycleId AND type = :type AND montant < 0
+    """)
+    suspend fun aDejaPenaliteTypeCycle(memberId: Long, caisseId: Long, cycleId: Long, type: TransactionType): Boolean
 
     @Query("""
         SELECT SUM(nombreParts) FROM tontine_members m
@@ -243,4 +254,64 @@ interface TransactionDao {
         AND type = 'REMBOURSEMENT'
     """)
     suspend fun getTotalRemboursementPret(pretId: Long): Long?
+
+    @Query("""
+        SELECT SUM(montant) FROM transactions 
+        WHERE caisseId = :caisseId 
+        AND type IN ('PENALITE_RETARD', 'PENALITE_ECHEC')
+    """)
+    fun getSoldeAmendes(caisseId: Long): Flow<Long?>
+
+    @Query("""
+        SELECT SUM(montant) FROM transactions 
+        WHERE caisseId = :caisseId 
+        AND type = 'FRAIS_CAISSE'
+    """)
+    fun getSoldeFraisCaisse(caisseId: Long): Flow<Long?>
+
+    @Query("""
+        SELECT SUM(montant) FROM transactions 
+        WHERE caisseId = :caisseId 
+        AND type = 'COTISATION'
+    """)
+    fun getSoldeCotisations(caisseId: Long): Flow<Long?>
+    
+    @Query("""
+        SELECT type, SUM(montant) as total 
+        FROM transactions 
+        WHERE caisseId = :caisseId 
+        GROUP BY type
+    """)
+    fun getCaisseBreakdown(caisseId: Long): Flow<List<CaisseBreakdown>>
+
+    @Query("SELECT * FROM transactions WHERE cycleId IN (:cycleIds)")
+    fun getTransactionsByCycles(cycleIds: List<Long>): Flow<List<TransactionEntity>>
+
+    @Query("""
+        SELECT MAX(dateTransaction) FROM transactions 
+        WHERE caisseId = :caisseId AND memberId = :memberId AND type = 'COTISATION'
+    """)
+    suspend fun getLastContributionDate(caisseId: Long, memberId: Long): Long?
+
+    @Query("""
+        SELECT dateTransaction, montant 
+        FROM transactions t
+        JOIN caisses c ON t.caisseId = c.id
+        WHERE c.tontineId = :tontineId
+        ORDER BY dateTransaction ASC
+    """)
+    fun getTontineTransactionsHistory(tontineId: Long): Flow<List<SimpleTransaction>>
+
+    @Query("""
+        SELECT t.type as type, SUM(ABS(t.montant)) as total
+        FROM transactions t
+        JOIN caisses c ON t.caisseId = c.id
+        WHERE c.tontineId = :tontineId AND t.montant > 0
+        GROUP BY t.type
+    """)
+    fun getTontineIncomeDistribution(tontineId: Long): Flow<List<IncomeStats>>
 }
+
+data class CaisseBreakdown(val type: TransactionType, val total: Long)
+data class SimpleTransaction(val dateTransaction: Long, val montant: Long)
+data class IncomeStats(val type: TransactionType, val total: Long)

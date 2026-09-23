@@ -45,6 +45,7 @@ import com.indiza.cotisation.tools.NeonCyan
 fun CaisseConfigScreen(
     typeInitial: CaisseType,
     existingCaisse: CaisseEntity? = null,
+    isAmountLocked: Boolean = false,
     onSave: (CaisseDraft) -> Unit,
     onCancel: () -> Unit
 ) {
@@ -61,10 +62,14 @@ fun CaisseConfigScreen(
                     frequence = it.frequence,
                     redistribution = it.redistribution,
                     possibilitePret = it.possibilitePret,
+                    autoriserPretSurAmendes = it.autoriserPretSurAmendes,
                     tauxInteret = it.tauxInteret,
+                    typeInteret = it.typeInteret,
                     penaliteRetardFixe = it.penaliteRetardFixe,
                     penaliteEchecFixe = it.penaliteEchecFixe,
-                    dateLimiteJour = it.dateLimiteJour
+                    fraisCaisse = it.fraisCaisse,
+                    dateLimiteJour = it.dateLimiteJour,
+                    respecterFrequenceStrictement = it.respecterFrequenceStrictement
                 )
             } ?: initialiserCaisseParType(typeInitial)
         )
@@ -138,6 +143,7 @@ fun CaisseConfigScreen(
                     },
                     label = { Text("Montant fixe", style = MaterialTheme.typography.bodySmall) },
                     isError = !isMontantValid,
+                    enabled = !isAmountLocked,
                     modifier = Modifier.weight(1f),
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
@@ -153,6 +159,7 @@ fun CaisseConfigScreen(
                     },
                     label = { Text("Minimum", style = MaterialTheme.typography.bodySmall) },
                     isError = !isMontantValid,
+                    enabled = !isAmountLocked,
                     modifier = Modifier.weight(1f),
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
@@ -173,13 +180,34 @@ fun CaisseConfigScreen(
                 onCheckedChange = { draft = draft.copy(redistribution = it) }
             )
 
-            SwitchOption(
-                title = "Possibilité de prêt",
-                subtitle = "Autoriser les emprunts",
-                checked = draft.possibilitePret,
-                enabled = draft.type != CaisseType.PRET,
-                onCheckedChange = { draft = draft.copy(possibilitePret = it) }
-            )
+                SwitchOption(
+                    title = "Possibilité de prêt",
+                    subtitle = "Autoriser les emprunts sur le capital",
+                    checked = draft.possibilitePret,
+                    enabled = draft.type != CaisseType.PRET,
+                    onCheckedChange = { 
+                        draft = draft.copy(
+                            possibilitePret = it,
+                            autoriserPretSurAmendes = if (it) false else draft.autoriserPretSurAmendes
+                        ) 
+                    }
+                )
+
+                SwitchOption(
+                    title = "Prêts sur les amendes",
+                    subtitle = "Les amendes collectées alimentent le fonds de prêt",
+                    checked = draft.autoriserPretSurAmendes,
+                    enabled = !draft.possibilitePret,
+                    onCheckedChange = { draft = draft.copy(autoriserPretSurAmendes = it) }
+                )
+
+                SwitchOption(
+                    title = "Respecter la fréquence strictement",
+                    subtitle = "Bloquer les cotisations multiples dans la même période",
+                    checked = draft.respecterFrequenceStrictement,
+                    enabled = true,
+                    onCheckedChange = { draft = draft.copy(respecterFrequenceStrictement = it) }
+                )
 
             // --- OPTIONS PRÊT ---
             if (draft.possibilitePret) {
@@ -244,6 +272,30 @@ fun CaisseConfigScreen(
                 modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 leadingIcon = { Icon(Icons.Default.Block, null, tint = Color.Red) }
+            )
+
+            Spacer(Modifier.height(12.dp))
+
+            Text(
+                "Frais de caisse",
+                style = MaterialTheme.typography.titleSmall,
+                color = NeonCyan
+            )
+
+            OutlinedTextField(
+                value = draft.fraisCaisse?.toString() ?: "",
+                onValueChange = { 
+                    val value = it.toLongOrNull()
+                    // Le frais de caisse doit être inférieur au montant à cotiser
+                    val limit = draft.montantFixe ?: draft.montantMinimum ?: Long.MAX_VALUE
+                    if (value == null || value < limit) {
+                        draft = draft.copy(fraisCaisse = value)
+                    }
+                },
+                label = { Text("Frais de gestion / prélèvement (FCFA)") },
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                placeholder = { Text("S'applique lors du versement de la cagnotte") }
             )
 
             Spacer(Modifier.height(20.dp))

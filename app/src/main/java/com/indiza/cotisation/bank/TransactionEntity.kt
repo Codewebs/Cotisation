@@ -17,11 +17,12 @@ enum class TransactionType {
     INTERET,          // Intérêts générés par un prêt
     TOUR_ENCAISSER,        // Quand un membre bouffe la cotisation à son tour
     TRANSFERT_SORTIE,     // Argent retiré d'une caisse pour une autre
-    TRANSFERT_ENTREE      // Argent reçu d'une autre caisse
+    TRANSFERT_ENTREE,      // Argent reçu d'une autre caisse
+    FRAIS_CAISSE          // Frais de gestion prélevés lors du versement
 }
 @Entity(
     tableName = "caisse_cycles",
-    foreignKeys = [ForeignKey(entity = CaisseEntity::class, parentColumns = ["id"], childColumns = ["caisseId"])]
+    foreignKeys = [ForeignKey(entity = CaisseEntity::class, parentColumns = ["id"], childColumns = ["caisseId"], onDelete = ForeignKey.CASCADE)]
 )
 data class CycleEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0L,
@@ -35,8 +36,8 @@ data class CycleEntity(
 @Entity(
     tableName = "transactions",
     foreignKeys = [
-        ForeignKey(entity = CaisseEntity::class, parentColumns = ["id"], childColumns = ["caisseId"]),
-        ForeignKey(entity = TontineMemberEntity::class, parentColumns = ["id"], childColumns = ["memberId"])
+        ForeignKey(entity = CaisseEntity::class, parentColumns = ["id"], childColumns = ["caisseId"], onDelete = ForeignKey.CASCADE),
+        ForeignKey(entity = TontineMemberEntity::class, parentColumns = ["id"], childColumns = ["memberId"], onDelete = ForeignKey.CASCADE)
     ]
 )
 data class TransactionEntity(
@@ -48,6 +49,7 @@ data class TransactionEntity(
     val montant: Long, // Positif pour entrées, négatif pour sorties
     val type: TransactionType,
     val dateTransaction: Long = System.currentTimeMillis(),
+    val validatedById: String? = null, // ID du compte réel ayant validé
     val motif: String? = null,
     val a_cotise: Boolean = true,
     val referencePretId: Long? = null // Lie un remboursement à un prêt spécifique

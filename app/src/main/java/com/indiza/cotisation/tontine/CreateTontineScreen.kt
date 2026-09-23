@@ -233,10 +233,36 @@ fun CreateTontineScreen(
                 }
 
 
+                // Mode de la Tontine (Online / Offline)
+                Text("Type de Tontine", style = MaterialTheme.typography.titleMedium, color = Color.Gray)
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    ModeCard(
+                        modifier = Modifier.weight(1f),
+                        title = "EN LIGNE",
+                        description = "Synchronisée, multi-appareils",
+                        isSelected = state.isOnline,
+                        onClick = { viewModel.onOnlineChange(true) }
+                    )
+                    ModeCard(
+                        modifier = Modifier.weight(1f),
+                        title = "HORS LIGNE",
+                        description = "Locale, ce téléphone uniquement",
+                        isSelected = !state.isOnline,
+                        onClick = { viewModel.onOnlineChange(false) }
+                    )
+                }
+
+                Spacer(Modifier.height(24.dp))
+
                 Surface(
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                    color = Color.White.copy(alpha = 0.05f),
                     shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
                 ) {
                     Row(
                         modifier = Modifier
@@ -249,12 +275,12 @@ fun CreateTontineScreen(
                             Text(
                                 "Mode Anonyme",
                                 style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onSurface
+                                color = Color.White
                             )
                             Text(
-                                "Les membres ne pourront pas voir les noms des autres adhérents.",
+                                "Les membres ne pourront pas voir les noms réels.",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = Color.Gray
                             )
                         }
                         Switch(
@@ -268,7 +294,7 @@ fun CreateTontineScreen(
                     }
                 }
 
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(24.dp))
                 Text("Caisses", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(8.dp))
 
@@ -316,6 +342,47 @@ fun CreateTontineScreen(
     }
 }
 
+
+@Composable
+fun ModeCard(
+    modifier: Modifier = Modifier,
+    title: String,
+    description: String,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier.height(100.dp),
+        color = if (isSelected) NeonCyan.copy(alpha = 0.1f) else Color.White.copy(alpha = 0.05f),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(
+            width = 2.dp,
+            color = if (isSelected) NeonCyan else Color.White.copy(alpha = 0.1f)
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = if (isSelected) NeonCyan else Color.White
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.Gray,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                lineHeight = 14.sp
+            )
+        }
+    }
+}
 
 @Composable
 fun TypeSelectionDialog(

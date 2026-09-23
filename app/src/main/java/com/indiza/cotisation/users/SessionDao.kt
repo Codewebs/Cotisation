@@ -18,6 +18,9 @@ interface SessionDao {
     @Query("SELECT COUNT(*) FROM session")
     suspend fun hasActiveSession(): Boolean
 
+    @Query("SELECT COUNT(*) > 0 FROM session")
+    fun hasActiveSessionFlow(): kotlinx.coroutines.flow.Flow<Boolean>
+
     @Update
     suspend fun updateSession(session: SessionEntity)
 

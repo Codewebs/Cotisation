@@ -19,8 +19,10 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.indiza.cotisation.tools.*
+import androidx.compose.ui.text.style.TextAlign
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.foundation.clickable
 
 @Composable
 fun AuthScreen(onAuthSuccess: () -> Unit) {
@@ -118,7 +120,16 @@ fun LoginScreen(
                     shape = RoundedCornerShape(16.dp)
                 )
                 if (errorMessage != null) {
-                    Text(errorMessage!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 8.dp))
+                    var showDetail by remember(errorMessage) { mutableStateOf(false) }
+                    Text(
+                        text = if (showDetail) errorMessage!! else "Problème de connexion au serveur. Appuyez pour voir le détail.",
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier
+                            .padding(vertical = 8.dp)
+                            .clickable { showDetail = !showDetail },
+                        style = MaterialTheme.typography.bodySmall,
+                        textAlign = TextAlign.Center
+                    )
                 }
                 Spacer(modifier = Modifier.height(24.dp))
                 Button(
@@ -184,7 +195,16 @@ fun RegisterScreen(
             OutlinedTextField(value = confirmPin, onValueChange = { if(it.length <= 4) confirmPin = it }, label = { Text("Confirmer PIN") }, modifier = Modifier.fillMaxWidth(), visualTransformation = PasswordVisualTransformation())
             
             if (errorMessage != null) {
-                Text(errorMessage!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 8.dp))
+                var showDetail by remember(errorMessage) { mutableStateOf(false) }
+                Text(
+                    text = if (showDetail) errorMessage!! else "Erreur d'inscription. Appuyez pour voir le détail.",
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier
+                        .padding(vertical = 8.dp)
+                        .clickable { showDetail = !showDetail },
+                    style = MaterialTheme.typography.bodySmall,
+                    textAlign = TextAlign.Center
+                )
             }
             Spacer(modifier = Modifier.height(24.dp))
             Button(

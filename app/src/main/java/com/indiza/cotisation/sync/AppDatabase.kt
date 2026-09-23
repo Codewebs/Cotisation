@@ -44,7 +44,7 @@ import com.indiza.cotisation.users.UserEntity
         TourEntity::class,
         TourBeneficiaireEntity::class
     ],
-    version = 5,
+    version = 14,
     exportSchema = false
 )
 @TypeConverters(DateConverter::class, RoleConverter::class)

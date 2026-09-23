@@ -21,11 +21,18 @@ data class TontineEntity(
     val dateFin: LocalDate,
     val code: String? = null,
     val isAnonymous: Boolean = false,
+    val isOnline: Boolean = true,
     val closed: Boolean = false,
+    val creatorId: String? = null, // ID de l'initiateur
     override val remoteId: String? = null,
     override val syncStatus: SyncStatus = SyncStatus.PENDING_CREATE,
     
-    override val updatedAt: Long = System.currentTimeMillis()
+    override val updatedAt: Long = System.currentTimeMillis(),
+
+    // Résumé financier (mis à jour par la synchro si en ligne)
+    val lastGlobalBalance: Long = 0,
+    val lastTotalActiveLoans: Long = 0,
+    val lastLendableAmount: Long = 0
 ) : Syncable<Long>
 
 data class TontineSyncDto(
@@ -34,6 +41,7 @@ data class TontineSyncDto(
     val exercice: String?,
     val dateDebut: String,
     val dateFin: String,
+    val creatorId: String? = null,
     val updatedAt: Long
 )
 fun TontineSyncDto.toApiDto() = TontineApiDto(
@@ -42,6 +50,7 @@ fun TontineSyncDto.toApiDto() = TontineApiDto(
     exercice = exercice,
     dateDebut = dateDebut,
     dateFin = dateFin,
+    creatorId = creatorId,
     updatedAt = updatedAt
 )
 fun TontineEntity.toSyncDto() = TontineSyncDto(

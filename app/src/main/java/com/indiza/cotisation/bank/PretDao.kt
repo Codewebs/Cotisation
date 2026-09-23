@@ -23,4 +23,7 @@ interface PretDao {
 
     @Query("SELECT * FROM prets WHERE id = :id")
     suspend fun getPretById(id: Long): PretEntity?
+
+    @Query("SELECT * FROM prets WHERE memberId = :memberId AND caisseId = :caisseId AND statut != 'REMBOURSE' LIMIT 1")
+    suspend fun getActivePret(memberId: Long, caisseId: Long): PretEntity?
 }

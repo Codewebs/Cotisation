@@ -25,13 +25,41 @@
             </div>
         </div>
 
+        <!-- Section Statistiques Administrateur (Si applicable) -->
+        <div id="admin-stats-section" class="hidden mb-12 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="bg-cyan-500/10 border border-cyan-500/20 rounded-3xl p-6 glass">
+                <p class="text-[10px] font-black text-cyan-500 uppercase tracking-widest mb-1">Signatures ce mois</p>
+                <p id="sig-count" class="text-3xl font-black text-white">0</p>
+                <p id="sig-month" class="text-[8px] text-gray-500 uppercase font-bold mt-2">JANVIER</p>
+            </div>
+            <div class="bg-emerald-500/10 border border-emerald-500/20 rounded-3xl p-6 glass">
+                <p class="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Volume Certifié</p>
+                <p id="sig-volume" class="text-3xl font-black text-white">0 F</p>
+                <p class="text-[8px] text-gray-500 uppercase font-bold mt-2">ENCAISSEMENTS VALIDÉS</p>
+            </div>
+            <div class="bg-purple-500/10 border border-purple-500/20 rounded-3xl p-6 glass flex items-center justify-center">
+                <div class="text-center">
+                    <p class="text-[10px] font-black text-purple-500 uppercase tracking-widest mb-2">Statut Certification</p>
+                    <span class="bg-purple-500 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase">Actif</span>
+                </div>
+            </div>
+        </div>
+
         <!-- Section Tontines -->
         <div class="mb-6 flex justify-between items-center">
             <h2 class="text-xl font-bold text-cyan-400 tracking-wide uppercase">Mes Tontines</h2>
             <a href="/create-tontine" class="bg-cyan-500 hover:bg-cyan-600 text-gray-900 px-4 py-2 rounded-xl text-sm font-bold transition">LANCER UNE TONTINE</a>
         </div>
 
-        <div id="tontine-list" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div id="tontine-list" class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+            <!-- Rempli par JS -->
+        </div>
+
+        <!-- Section Notifications -->
+        <div class="mb-6">
+            <h2 class="text-xl font-bold text-cyan-400 tracking-wide uppercase">Notifications & Reçus</h2>
+        </div>
+        <div id="notification-list" class="space-y-3">
             <!-- Rempli par JS -->
         </div>
 
@@ -56,7 +84,58 @@
             document.getElementById('user-phone').innerText = user.phone;
 
             fetchTontines(user.id);
+            fetchNotifications(user.id);
+            fetchSignatureStats(user.id);
         });
+
+        async function fetchSignatureStats(userId) {
+            try {
+                const res = await fetch(`/users/${userId}/signature-stats`);
+                const stats = await res.json();
+
+                if (stats.count > 0) {
+                    document.getElementById('admin-stats-section').classList.remove('hidden');
+                    document.getElementById('sig-count').innerText = stats.count;
+                    document.getElementById('sig-volume').innerText = `${stats.totalAmount.toLocaleString()} F`;
+                    document.getElementById('sig-month').innerText = stats.month.toUpperCase();
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        async function fetchNotifications(userId) {
+            const list = document.getElementById('notification-list');
+            try {
+                const res = await fetch(`/users/${userId}/notifications`);
+                const notifications = await res.json();
+
+                if (notifications.length === 0) {
+                    list.innerHTML = '<p class="text-gray-600 text-sm italic">Aucune notification.</p>';
+                    return;
+                }
+
+                notifications.forEach(n => {
+                    const card = document.createElement('div');
+                    card.className = `p-4 rounded-2xl border transition cursor-pointer flex justify-between items-center ${n.isRead ? 'bg-gray-800/20 border-gray-800' : 'bg-cyan-500/5 border-cyan-500/30'}`;
+                    card.onclick = () => {
+                        if (n.type === 'RECEIPT') window.location.href = `/receipt?txId=${n.referenceId}`;
+                        if (n.type === 'REPORT') window.location.href = `/tontine-details?id=${n.referenceId}`;
+                        markAsRead(n.id);
+                    };
+                    card.innerHTML = `
+                        <div>
+                            <p class="text-sm font-bold text-white">${n.title}</p>
+                            <p class="text-xs text-gray-500">${n.message}</p>
+                        </div>
+                        ${!n.isRead ? '<span class="w-2 h-2 bg-cyan-500 rounded-full"></span>' : ''}
+                    `;
+                    list.appendChild(card);
+                });
+            } catch (e) { console.error(e); }
+        }
+
+        async function markAsRead(id) {
+            fetch(`/notifications/${id}/read`, { method: 'POST' });
+        }
 
         async function fetchTontines(userId) {
             const list = document.getElementById('tontine-list');

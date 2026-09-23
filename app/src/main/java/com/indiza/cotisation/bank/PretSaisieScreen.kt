@@ -32,6 +32,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
@@ -40,6 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -68,6 +70,10 @@ fun PretSaisieScreen(
     var montantPret by remember { mutableStateOf("") }
     var moisDiffere by remember { mutableStateOf(0) }
     var showDiffereOption by remember { mutableStateOf(false) }
+    
+    var selectedOriginCaisseId by remember { mutableStateOf<Long?>(null) }
+    val allCaisses by viewModel.caisseDao.getCaissesByTontine(caisse.tontineId).collectAsState(initial = emptyList())
+    var showOriginSelector by remember { mutableStateOf(false) }
 
     CosmicBackground {
         Scaffold(
@@ -127,6 +133,47 @@ fun PretSaisieScreen(
 
                 Spacer(Modifier.height(24.dp))
 
+                // --- OPTIONS ORIGINE DES FONDS ---
+                if (caisse.possibilitePret) {
+                    Text("ORIGINE DES FONDS (OPTIONNEL)", style = MaterialTheme.typography.labelSmall, color = NeonCyan)
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(
+                            onClick = { showOriginSelector = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.3f))
+                        ) {
+                            Text(
+                                text = selectedOriginCaisseId?.let { id -> allCaisses.find { it.id == id }?.libelle } ?: "Caisse actuelle (${caisse.libelle})",
+                                color = Color.White
+                            )
+                        }
+                        
+                        androidx.compose.material3.DropdownMenu(
+                            expanded = showOriginSelector,
+                            onDismissRequest = { showOriginSelector = false },
+                            modifier = Modifier.background(Color(0xFF1A1A1A))
+                        ) {
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("Caisse actuelle (${caisse.libelle})", color = Color.White) },
+                                onClick = { 
+                                    selectedOriginCaisseId = null
+                                    showOriginSelector = false 
+                                }
+                            )
+                            allCaisses.filter { it.id != caisse.id }.forEach { c ->
+                                androidx.compose.material3.DropdownMenuItem(
+                                    text = { Text(c.libelle, color = Color.White) },
+                                    onClick = {
+                                        selectedOriginCaisseId = c.id
+                                        showOriginSelector = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                }
+
                 // --- OPTIONS DIFFÉRÉ ---
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -176,6 +223,7 @@ fun PretSaisieScreen(
                                 montant = montant,
                                 cycleId = cycleId,
                                 moisDiffere = if (showDiffereOption) moisDiffere else 0,
+                                originCaisseId = selectedOriginCaisseId,
                                 onSuccess = onDismiss
                             )
                         }

@@ -31,8 +31,8 @@ data class TourEntity(
     tableName = "tour_beneficiaires",
     primaryKeys = ["tourId", "memberId"],
     foreignKeys = [
-        ForeignKey(entity = TourEntity::class, parentColumns = ["id"], childColumns = ["tourId"]),
-        ForeignKey(entity = TontineMemberEntity::class, parentColumns = ["id"], childColumns = ["memberId"])
+        ForeignKey(entity = TourEntity::class, parentColumns = ["id"], childColumns = ["tourId"], onDelete = ForeignKey.CASCADE),
+        ForeignKey(entity = TontineMemberEntity::class, parentColumns = ["id"], childColumns = ["memberId"], onDelete = ForeignKey.CASCADE)
     ]
 )
 data class TourBeneficiaireEntity(
@@ -54,6 +54,7 @@ data class CreateTourUiState(
     val partsEncaisseesMap: Map<Long, Int> = emptyMap(),
     val soldeGlobal: Long = 0L,
     val totalPartsCaisse: Int = 0,
+    val totalParticipants: Int = 0,
     val ordreFige: Boolean = false
 )
 

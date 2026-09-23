@@ -81,6 +81,7 @@ fun TransactionScreen(
     cycleId: Long,
     viewModel: TransactionViewModel = hiltViewModel()
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val montantAverser = (caisse.montantFixe ?: 0L) * participant.nombreParts
 
     // On initialise le champ de saisie avec ce résultat
@@ -97,6 +98,7 @@ fun TransactionScreen(
 
     var showConfirmDialog by remember { mutableStateOf(false) }
     var isSuccess by remember { mutableStateOf(false) }
+    var isProcessing by remember { mutableStateOf(false) }
 
     val base = (caisse.montantFixe ?: 0L) * participant.nombreParts
     val penaliteRetard = if (appliquerRetard) (caisse.penaliteRetardFixe ?: 0L) else 0L
@@ -211,13 +213,13 @@ fun TransactionScreen(
                     value = montantSaisi,
                     onValueChange = { if (it.all { char -> char.isDigit() }) montantSaisi = it },
                     modifier = Modifier.fillMaxWidth(),
-                    textStyle = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, color = Color.White),
-                    suffix = { Text("FCFA", color = Color.Gray) },
+                    textStyle = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Black, color = NeonCyan),
+                    suffix = { Text("FCFA", color = NeonCyan, fontWeight = FontWeight.Bold) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = NeonCyan,
                         unfocusedBorderColor = Color.White.copy(alpha = 0.3f),
-                        focusedTextColor = Color.White,
+                        focusedTextColor = NeonCyan,
                         unfocusedTextColor = Color.White
                     ),
                     trailingIcon = {
@@ -384,6 +386,8 @@ fun TransactionScreen(
                     confirmButton = {
                         Button(
                             onClick = {
+                                if (isProcessing) return@Button
+                                isProcessing = true
                                 val m = montantSaisi.toLongOrNull() ?: 0L
                                 viewModel.enregistrerCotisation(
                                     caisse = caisse,
@@ -392,13 +396,20 @@ fun TransactionScreen(
                                     appliquerRetard = appliquerRetard,
                                     appliquerEchec = appliquerEchec,
                                     cycleId = cycleId
-                                )
-                                showConfirmDialog = false
-                                isSuccess = true
+                                ) { result ->
+                                    isProcessing = false
+                                    if (result.isSuccess) {
+                                        isSuccess = true
+                                    } else {
+                                        android.widget.Toast.makeText(context, result.exceptionOrNull()?.message ?: "Erreur", android.widget.Toast.LENGTH_LONG).show()
+                                    }
+                                    showConfirmDialog = false
+                                }
                             },
+                            enabled = !isProcessing,
                             colors = ButtonDefaults.buttonColors(containerColor = NeonCyan)
                         ) {
-                            Text("Confirmer", color = Color.Black)
+                            Text(if (isProcessing) "Traitement..." else "Confirmer", color = Color.Black)
                         }
                     },
                     dismissButton = {

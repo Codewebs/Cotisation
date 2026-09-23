@@ -185,10 +185,16 @@ fun BulkValidationScreen(
                     }
                 }
 
+                val context = androidx.compose.ui.platform.LocalContext.current
                 Button(
                     onClick = {
-                        viewModel.validerEnMasse(caisse, actionType, selectedParticipants, cycleId)
-                        onConfirm()
+                        viewModel.validerEnMasse(caisse, actionType, selectedParticipants, cycleId) { result ->
+                            if (result.isSuccess) {
+                                onConfirm()
+                            } else {
+                                android.widget.Toast.makeText(context, result.exceptionOrNull()?.message ?: "Erreur", android.widget.Toast.LENGTH_LONG).show()
+                            }
+                        }
                     },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = totalADeduire > 0 && !soldeInsuffisant,

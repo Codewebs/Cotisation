@@ -93,6 +93,21 @@ fun TontineItem(
                                 fontWeight = FontWeight.Bold
                             )
                         }
+                        Spacer(Modifier.width(8.dp))
+                        Surface(
+                            color = (if (tontine.isOnline) Color(0xFFE0F7FA) else Color(0xFFF5F5F5)),
+                            shape = RoundedCornerShape(4.dp),
+                            border = BorderStroke(0.5.dp, if (tontine.isOnline) Color(0xFF00BCD4) else Color.Gray)
+                        ) {
+                            Text(
+                                text = if (tontine.isOnline) "EN LIGNE" else "LOCAL",
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (tontine.isOnline) Color(0xFF0097A7) else Color.Gray,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
                     }
                     Spacer(Modifier.height(4.dp))
                     Text(
@@ -157,9 +172,22 @@ fun TontineItem(
                     imageVector = if (tontine.syncStatus == SyncStatus.SYNCED)
                         Icons.Default.CloudDone else Icons.Default.CloudQueue,
                     contentDescription = null,
-                    tint = if (tontine.syncStatus == SyncStatus.SYNCED) Color(0xFF4CAF50) else Color.Gray,
+                    tint = when(tontine.syncStatus) {
+                        SyncStatus.SYNCED -> Color(0xFF4CAF50)
+                        SyncStatus.PENDING_CREATE, SyncStatus.PENDING_UPDATE -> Color(0xFFFF9800) // Orange pour attente
+                        SyncStatus.ERROR -> Color.Red
+                        else -> Color.Gray
+                    },
                     modifier = Modifier.size(16.dp)
                 )
+                if (tontine.syncStatus != SyncStatus.SYNCED) {
+                    Text(
+                        text = tontine.syncStatus.name.replace("PENDING_", ""),
+                        fontSize = 7.sp,
+                        color = Color.Gray,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+                }
                 Spacer(Modifier.width(8.dp))
                 Icon(Icons.Default.ChevronRight, null, modifier = Modifier.size(24.dp), tint = MaterialTheme.colorScheme.outline)
             }

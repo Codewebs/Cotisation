@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cotisation - Invitation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen flex items-center justify-center p-6">
+    <div id="loading" class="text-cyan-400 font-bold animate-pulse">Chargement de l'invitation...</div>
+
+    <div id="content" class="hidden max-w-md w-full bg-gray-800 rounded-3xl shadow-2xl border border-gray-700 p-10 text-center">
+        <div class="mb-6 inline-flex p-4 bg-cyan-500/10 rounded-2xl">
+            <svg class="w-12 h-12 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path></svg>
+        </div>
+
+        <h1 class="text-3xl font-black mb-2 text-white uppercase tracking-tight">INVITATION</h1>
+        <p id="inviter-name" class="text-gray-400 mb-8 italic">Vous avez été invité par ...</p>
+
+        <div class="bg-gray-700/30 rounded-2xl p-6 border border-gray-600 mb-10">
+            <h2 id="tontine-name" class="text-xl font-bold text-cyan-400 mb-2">NOM DE LA TONTINE</h2>
+            <div class="text-xs text-gray-500 space-y-1">
+                <p>Début: <span id="tontine-start" class="text-gray-300">--</span></p>
+                <p>Fin: <span id="tontine-end" class="text-gray-300">--</span></p>
+            </div>
+        </div>
+
+        <button onclick="joinTontine()" class="w-full bg-cyan-500 hover:bg-cyan-600 text-gray-900 font-black py-4 rounded-2xl shadow-lg shadow-cyan-500/20 transform active:scale-95 transition mb-4">
+            REJOINDRE LA TONTINE
+        </button>
+        <p class="text-[10px] text-gray-500 uppercase tracking-widest">Une demande sera envoyée au bureau</p>
+    </div>
+
+    <div id="success" class="hidden max-w-md w-full bg-emerald-900/20 border border-emerald-500/30 rounded-3xl p-10 text-center">
+        <div class="text-emerald-400 text-4xl mb-4">✓</div>
+        <h2 class="text-2xl font-bold text-white mb-2">Demande envoyée !</h2>
+        <p class="text-emerald-400/80 text-sm">Le bureau de la tontine a été informé. Vous recevrez une notification dès que votre compte sera mappé.</p>
+        <button onclick="window.location.href='/'" class="mt-8 bg-emerald-500 text-gray-900 px-6 py-2 rounded-xl font-bold">RETOUR</button>
+    </div>
+
+    <script>
+        const code = new URLSearchParams(window.location.search).get('code');
+        let inviteData = null;
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            if (!code) {
+                alert("Code d'invitation manquant.");
+                window.location.href = '/';
+                return;
+            }
+
+            try {
+                const res = await fetch(`/invites/${code}`);
+                if (!res.ok) throw new Error("Invitation invalide");
+                inviteData = await res.json();
+
+                document.getElementById('inviter-name').innerText = `Vous avez été invité par ${inviteData.sender.nom}`;
+                document.getElementById('tontine-name').innerText = inviteData.Tontine.libelle;
+                document.getElementById('tontine-start').innerText = inviteData.Tontine.dateDebut;
+                document.getElementById('tontine-end').innerText = inviteData.Tontine.dateFin;
+
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('content').classList.remove('hidden');
+            } catch (e) {
+                alert(e.message);
+                window.location.href = '/';
+            }
+        });
+
+        async function joinTontine() {
+            const user = JSON.parse(localStorage.getItem('currentUser'));
+            if (!user) {
+                alert("Veuillez vous connecter d'abord.");
+                window.location.href = '/login?redirect=' + encodeURIComponent(window.location.href);
+                return;
+            }
+
+            try {
+                const res = await fetch(`/invites/${code}/join`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ userId: user.id })
+                });
+
+                if (res.ok) {
+                    document.getElementById('content').classList.add('hidden');
+                    document.getElementById('success').classList.remove('hidden');
+                } else {
+                    const error = await res.json();
+                    alert(error.error);
+                }
+            } catch (e) {
+                alert("Erreur réseau.");
+            }
+        }
+    </script>
+</body>
+</html>

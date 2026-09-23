@@ -57,13 +57,14 @@ import com.indiza.cotisation.tontine.TontineDetailScreen
 import com.indiza.cotisation.tontine.TontineListScreen
 import com.indiza.cotisation.tontine.TontineRepository
 import com.indiza.cotisation.users.AuthScreen
+import com.indiza.cotisation.users.ProfileScreen
 import com.indiza.cotisation.users.SearchTontineScreen
 import com.indiza.cotisation.users.SearchTontineViewModel
 import com.indiza.cotisation.users.SessionViewModel
 import kotlinx.coroutines.launch
 
 enum class Screen {
-    HOME, CREATE_TONTINE, LIST_TONTINE, SEARCH_TONTINE, AUTH, DETAILS_TONTINE, EDIT_TONTINE, DETAILS_CAISSE
+    HOME, CREATE_TONTINE, LIST_TONTINE, SEARCH_TONTINE, AUTH, DETAILS_TONTINE, EDIT_TONTINE, DETAILS_CAISSE, PROFILE
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -123,8 +124,10 @@ fun DrawerScreen(connectivityObserver: ConnectivityObserver) {
         when (currentScreen) {
             Screen.SEARCH_TONTINE-> {
                 SearchTontineScreen(
-                    searchViewModel,
-                    sessionViewModel, // ← Passez sessionViewModel
+                    viewModel = searchViewModel,
+                    sessionViewModel = sessionViewModel,
+                    notifViewModel = hiltViewModel(),
+                    adminViewModel = hiltViewModel(),
                     onBack = { currentScreen = Screen.HOME },
                     onCreateTontineWhenAuthenticated = {
                         currentScreen = Screen.CREATE_TONTINE
@@ -138,6 +141,10 @@ fun DrawerScreen(connectivityObserver: ConnectivityObserver) {
                     onNavigateToList = {
                         currentScreen = Screen.LIST_TONTINE
                     },
+                    onNavigateToProfile = {
+                        currentScreen = Screen.PROFILE
+                    },
+                    onNavigateToReceipt = { /* Pas géré dans Drawer pour le moment */ },
                     onLogout = {
                         sessionViewModel.logout()
                         currentScreen = Screen.HOME
@@ -219,7 +226,8 @@ fun DrawerScreen(connectivityObserver: ConnectivityObserver) {
                         selectedTontineId = id
                         currentScreen = Screen.EDIT_TONTINE
                     },
-                    onAddClick = { currentScreen = Screen.CREATE_TONTINE }
+                    onAddClick = { currentScreen = Screen.CREATE_TONTINE },
+                    onProfileClick = { currentScreen = Screen.PROFILE }
                 )
             }
 
@@ -235,6 +243,19 @@ fun DrawerScreen(connectivityObserver: ConnectivityObserver) {
                 AuthScreen(
                     onAuthSuccess = {
                         currentScreen = Screen.HOME
+                    }
+                )
+            }
+            Screen.PROFILE -> {
+                ProfileScreen(
+                    onBack = { currentScreen = Screen.HOME },
+                    onLogout = {
+                        sessionViewModel.logout()
+                        currentScreen = Screen.HOME
+                    },
+                    onTontineClick = { tontineId ->
+                        selectedTontineId = tontineId
+                        currentScreen = Screen.DETAILS_TONTINE
                     }
                 )
             }

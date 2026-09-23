@@ -6,5 +6,8 @@ data class MemberReportRow(
     val dejaCotise: Long,
     val manquant: Long,
     val cotiseCeCycle: Long,
+    val dateCotisation: String? = null,
+    val isBeneficiaire: Boolean = false,
+    val soldeCaisseMoment: Long = 0L,
     val status: String
 )

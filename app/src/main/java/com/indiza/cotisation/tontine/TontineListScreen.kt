@@ -18,6 +18,8 @@ import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material3.AlertDialog
@@ -48,6 +50,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -60,13 +66,15 @@ fun TontineListScreen(
     viewModel: TontineListViewModel = hiltViewModel(),
     onReunionClick: (Long) -> Unit,
     onEditClick: (Long) -> Unit,
-    onAddClick: () -> Unit
+    onAddClick: () -> Unit,
+    onProfileClick: () -> Unit
 ) {
 
     val snackbarHostState = remember { SnackbarHostState() }
 
-    val tontines by viewModel.tontines2.collectAsState()
+    val tontines by viewModel.tontines.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
+    val lastSyncTime by viewModel.lastSyncTime.collectAsState()
     var showSortMenu by remember { mutableStateOf(false) }
     var tontineToDelete by remember { mutableStateOf<Long?>(null) }
     if (tontineToDelete != null) {
@@ -112,7 +120,15 @@ fun TontineListScreen(
             Column {
                 CenterAlignedTopAppBar(
                     title = { Text("Mes Réunions", fontWeight = FontWeight.Bold) },
+                    navigationIcon = {
+                        IconButton(onClick = onProfileClick) {
+                            Icon(Icons.Default.Person, contentDescription = "Profil", tint = NeonCyan)
+                        }
+                    },
                     actions = {
+                        IconButton(onClick = { viewModel.refreshTontines() }) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Rafraîchir")
+                        }
                         IconButton(onClick = { showSortMenu = true }) {
                             Icon(Icons.Default.Sort, contentDescription = "Trier")
                         }
@@ -153,6 +169,23 @@ fun TontineListScreen(
                     shape = RoundedCornerShape(12.dp),
                     singleLine = true
                 )
+
+                lastSyncTime?.let { time ->
+                    val dateStr = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(time))
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Synchronisé à $dateStr",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFF4CAF50),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 9.sp
+                        )
+                    }
+                }
             }
         },
         floatingActionButton = {

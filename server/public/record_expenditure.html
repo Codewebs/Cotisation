@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cotisation - Enregistrer une Dépense</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen p-4 md:p-8 flex items-center justify-center">
+    <div class="max-w-2xl w-full bg-gray-800 rounded-[2.5rem] shadow-2xl border border-gray-700 p-8 md:p-12">
+        <div class="mb-10 text-center">
+            <h1 class="text-3xl font-black text-red-500 uppercase tracking-tighter leading-none mb-2">Sortie de Caisse</h1>
+            <p id="caisse-info" class="text-gray-500 text-xs font-bold uppercase tracking-widest">Enregistrement d'une dépense ou d'un don</p>
+        </div>
+
+        <div class="space-y-8">
+            <!-- Montant -->
+            <div>
+                <label class="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-3 text-center">Montant de la Sortie (FCFA)</label>
+                <input id="montant" type="number" placeholder="0" class="w-full bg-gray-900 border border-gray-700 rounded-2xl px-5 py-5 text-3xl font-black text-red-500 focus:ring-2 focus:ring-red-500 outline-none transition text-center">
+            </div>
+
+            <!-- Motif -->
+            <div>
+                <label class="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-3">Motif de la dépense</label>
+                <input id="motif" type="text" placeholder="Ex: Frais de réception, Don de secours, etc." class="w-full bg-gray-700 border border-gray-600 rounded-2xl px-5 py-4 text-sm font-bold focus:ring-2 focus:ring-red-500 outline-none transition">
+            </div>
+
+            <button onclick="submitExpenditure()" class="w-full mt-6 bg-red-600 hover:bg-red-700 text-white font-black py-5 rounded-3xl shadow-xl shadow-red-900/20 transform active:scale-95 transition uppercase tracking-tighter">
+                Valider la Dépense
+            </button>
+        </div>
+
+        <div id="msg-box" class="hidden mt-6 p-4 rounded-2xl text-sm text-center font-bold"></div>
+
+        <div class="mt-8 text-center">
+            <button onclick="history.back()" class="text-xs font-bold text-gray-600 hover:text-white transition uppercase">Annuler et retourner</button>
+        </div>
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const caisseId = urlParams.get('caisseId');
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if (!caisseId) {
+                alert("Erreur: ID Caisse manquant");
+                window.location.href = '/profile';
+                return;
+            }
+            fetchCaisseInfo();
+        });
+
+        async function fetchCaisseInfo() {
+            try {
+                const res = await fetch(`/caisses/${caisseId}`);
+                const caisse = await res.json();
+                document.getElementById('caisse-info').innerText = `${caisse.libelle} • Enregistrement de sortie`;
+            } catch (e) { console.error(e); }
+        }
+
+        async function submitExpenditure() {
+            const montant = document.getElementById('montant').value;
+            const motif = document.getElementById('motif').value;
+
+            if (!montant || montant <= 0) return showMsg("Veuillez saisir un montant valide", false);
+            if (!motif) return showMsg("Veuillez saisir un motif pour la dépense", false);
+
+            try {
+                const res = await fetch('/sorties', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        caisseId,
+                        montant: parseInt(montant),
+                        motif: motif
+                    })
+                });
+
+                if (res.ok) {
+                    showMsg("Dépense enregistrée avec succès !", true);
+                    setTimeout(() => history.back(), 1500);
+                } else {
+                    const err = await res.json();
+                    showMsg(err.error || "Erreur lors de l'enregistrement", false);
+                }
+            } catch (e) {
+                showMsg("Erreur de connexion au serveur", false);
+            }
+        }
+
+        function showMsg(text, isSuccess) {
+            const msgBox = document.getElementById('msg-box');
+            msgBox.classList.remove('hidden', 'bg-red-900/50', 'text-red-400', 'bg-green-900/50', 'text-green-400');
+            msgBox.classList.add(isSuccess ? 'bg-green-900/50' : 'bg-red-900/50', isSuccess ? 'text-green-400' : 'text-red-400');
+            msgBox.innerText = text;
+            msgBox.classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>

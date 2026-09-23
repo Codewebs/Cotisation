@@ -122,6 +122,12 @@ interface TourDao {
     @Query("UPDATE caisse_tours SET estTermine = 1 WHERE id = :tourId")
     suspend fun markTourAsTermine(tourId: Long)
 
+    @Query("UPDATE caisse_tours SET montantTotalDistribue = :montant WHERE id = :tourId")
+    suspend fun updateMontantTour(tourId: Long, montant: Long)
+
+    @Query("UPDATE tour_beneficiaires SET montantRecu = :montant WHERE tourId = :tourId AND memberId = :memberId")
+    suspend fun updateMontantBeneficiaire(tourId: Long, memberId: Long, montant: Long)
+
     @Query("""
         SELECT tb.memberId as memberId, SUM(tb.nombrePartsAttribuees) as count
         FROM tour_beneficiaires tb

@@ -44,6 +44,9 @@ class CreateTontineViewModel @Inject constructor(
     fun onAnonymousChange(enabled: Boolean) {
         _state.update { it.copy(isAnonymous = enabled) }
     }
+    fun onOnlineChange(enabled: Boolean) {
+        _state.update { it.copy(isOnline = enabled) }
+    }
     fun onDateFinChange(date: LocalDate) {
         _state.update { it.copy(dateFin = date) }
     }
@@ -97,18 +100,32 @@ class CreateTontineViewModel @Inject constructor(
         _state.update { it.copy(isSaving = true) }
 
         try {
+            // 0. Vérification des doublons (Même nom pour le même initiateur)
+            if (repository.isTontineNameDuplicate(currentState.libelle)) {
+                _state.update { it.copy(error = "Vous avez déjà créé une tontine portant ce nom (${currentState.libelle})", isSaving = false) }
+                return@launch
+            }
+
             // 1. On crée uniquement la tontine
             val tontineId = repository.insertTontine(
                 libelle = currentState.libelle,
                 exercice = currentState.exercice,
                 dateDebut = currentState.dateDebut,
-                dateFin = currentState.dateFin
+                dateFin = currentState.dateFin,
+                isOnline = currentState.isOnline,
+                isAnonymous = currentState.isAnonymous
             )
 
             // 2. On insère toutes les caisses que l'utilisateur a ajoutées (y compris la cotisation si elle y est)
             currentState.caisses.forEach { caisseDraft ->
                 repository.insertCaisse(tontineId, caisseDraft)
             }
+            
+            // 3. Déclencher la synchro une fois que tout est sauvé en local
+            if (currentState.isOnline) {
+                repository.triggerSync()
+            }
+
             _saveSuccess.emit(true)
 
             // Logique de succès (navigation, etc.)

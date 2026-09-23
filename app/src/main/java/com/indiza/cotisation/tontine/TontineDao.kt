@@ -31,6 +31,10 @@ interface TontineDao {
     suspend fun getById(id: Long): TontineEntity?
 
     @Transaction
+    @Query("SELECT * FROM tontines WHERE isOnline = 0 ORDER BY dateDebut DESC")
+    fun getLocalTontinesWithCaisses(): Flow<List<TontineWithCaisses>>
+
+    @Transaction
     @Query("SELECT * FROM tontines ORDER BY dateDebut DESC")
     fun getAllTontinesWithCaisses(): Flow<List<TontineWithCaisses>>
 
@@ -60,6 +64,9 @@ interface TontineDao {
     @Query("UPDATE tontines SET syncStatus = :status WHERE id = :id")
     suspend fun updateSyncStatus(id: Long, status: SyncStatus)
 
+    @Query("UPDATE tontines SET isOnline = :isOnline WHERE id = :id")
+    suspend fun updateOnlineStatus(id: Long, isOnline: Boolean)
+
     @Query("""SELECT * FROM tontines WHERE code = :query OR libelle LIKE '%' || :query || '%' ORDER BY id DESC LIMIT 50 """)
     suspend fun searchTontines(query: String): List<TontineEntity>
 
@@ -69,8 +76,20 @@ interface TontineDao {
     @Query("SELECT * FROM tontines WHERE remoteId = :remoteId")
     suspend fun getByRemoteId(remoteId: String?): TontineEntity?
 
+    @Query("""
+        SELECT EXISTS(
+            SELECT 1 FROM tontines t
+            INNER JOIN tontine_members m ON t.id = m.tontineId
+            WHERE t.libelle = :libelle AND m.userId = :userId AND m.isInitiator = 1
+        )
+    """)
+    suspend fun existsByNameAndInitiator(libelle: String, userId: String): Boolean
+
     @Query("DELETE FROM tontines WHERE id = :tontineId")
     suspend fun deleteTontineById(tontineId: Long)
+
+    @Query("DELETE FROM tontines")
+    suspend fun deleteAllTontines()
 
     @Query("""
     UPDATE tontines 

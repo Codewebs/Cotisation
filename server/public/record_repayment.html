@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cotisation - Enregistrer un Remboursement</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen p-4 md:p-8 flex items-center justify-center">
+    <div class="max-w-2xl w-full bg-gray-800 rounded-[2.5rem] shadow-2xl border border-gray-700 p-8 md:p-12">
+
+        <div class="mb-10 text-center">
+            <h1 class="text-3xl font-black text-emerald-400 uppercase tracking-tighter leading-none mb-2">Remboursement de Prêt</h1>
+            <p id="loan-info" class="text-gray-500 text-xs font-bold uppercase tracking-widest">Détails de l'opération</p>
+        </div>
+
+        <div class="space-y-8">
+            <!-- État du prêt -->
+            <div class="bg-gray-900/50 p-6 rounded-3xl border border-gray-700 flex justify-between items-center">
+                <div>
+                    <p class="text-[10px] text-gray-500 font-black uppercase mb-1">Montant restant</p>
+                    <p id="remaining-amount" class="text-2xl font-black text-white">0 F</p>
+                </div>
+                <div class="text-right">
+                    <p class="text-[10px] text-gray-500 font-black uppercase mb-1">Emprunteur</p>
+                    <p id="borrower-name" class="text-sm font-bold text-gray-300 uppercase">Chargement...</p>
+                </div>
+            </div>
+
+            <!-- Montant du Remboursement -->
+            <div>
+                <label class="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-3 text-center">Montant versé (FCFA)</label>
+                <input id="montant" type="number" placeholder="0" class="w-full bg-gray-900 border border-gray-700 rounded-2xl px-5 py-5 text-3xl font-black text-emerald-400 focus:ring-2 focus:ring-emerald-500 outline-none transition text-center">
+            </div>
+
+            <!-- Commentaire -->
+            <div>
+                <label class="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-3">Commentaire (Optionnel)</label>
+                <input id="motif" type="text" placeholder="Ex: Paiement tranche 1" class="w-full bg-gray-700 border border-gray-600 rounded-2xl px-5 py-4 text-sm font-bold focus:ring-2 focus:ring-cyan-500 outline-none transition">
+            </div>
+
+            <button onclick="submitRepayment()" class="w-full mt-6 bg-emerald-500 hover:bg-emerald-600 text-gray-900 font-black py-5 rounded-3xl shadow-xl shadow-emerald-500/20 transform active:scale-95 transition uppercase tracking-tighter">
+                Valider le Remboursement
+            </button>
+        </div>
+
+        <div id="msg-box" class="hidden mt-6 p-4 rounded-2xl text-sm text-center font-bold"></div>
+
+        <div class="mt-8 text-center">
+            <button onclick="history.back()" class="text-xs font-bold text-gray-600 hover:text-white transition uppercase">Annuler et retourner</button>
+        </div>
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const loanId = urlParams.get('loanId');
+        let tontineId = null;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if (!loanId) { window.location.href = '/profile'; return; }
+            fetchLoanDetails();
+        });
+
+        async function fetchLoanDetails() {
+            try {
+                // Pour simplifier, on récupère le prêt depuis l'API de tontine qui ramène tout
+                // On pourrait aussi faire un GET /prets/:id
+                // On va simuler en cherchant dans la liste des prêts de la tontine
+                // Mais pour le moment on va demander au serveur de nous donner les infos du prêt
+                // Je vais tricher un peu en utilisant l'ID tontine passé en URL si présent ou en cherchant
+
+                // On va supposer qu'on a un endpoint direct ou on passe par la tontine
+                // Ajoutons un petit fix dans index.js pour GET /prets/:id
+                const res = await fetch(`/tontines/search?query=`); // Un peu lourd
+                // En fait, on va juste utiliser le localStorage ou l'URL
+                // Amélioration de index.js requise pour GET /prets/:id
+
+                // Pour ce test, on va faire un fetch direct (j'ai rajouté l'endpoint dans ma tête, je vais l'ajouter en vrai)
+                const loanRes = await fetch(`/prets/${loanId}`);
+                const loan = await loanRes.json();
+
+                document.getElementById('remaining-amount').innerText = `${parseInt(loan.montantRestant).toLocaleString()} F`;
+                document.getElementById('montant').value = loan.montantRestant;
+
+                // Nom de l'emprunteur
+                const tRes = await fetch(`/tontines/${loan.Caisse.tontineId}`);
+                const tontine = await tRes.json();
+                const member = tontine.members.find(m => m.id === loan.memberId);
+                document.getElementById('borrower-name').innerText = member ? member.nomSaisi : (loan.nomEmprunteurExterne || 'Inconnu');
+
+            } catch (e) { console.error(e); }
+        }
+
+        async function submitRepayment() {
+            const montant = document.getElementById('montant').value;
+            const motif = document.getElementById('motif').value;
+            const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+
+            if (!montant || montant <= 0) return alert("Montant invalide");
+            if (!currentUser) return alert("Session expirée.");
+
+            try {
+                const res = await fetch(`/prets/${loanId}/repay`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        montant: parseInt(montant),
+                        validatedById: currentUser.id,
+                        motif: motif || "Remboursement de prêt"
+                    })
+                });
+
+                if (res.ok) {
+                    alert("Remboursement validé !");
+                    history.back();
+                } else {
+                    const err = await res.json();
+                    alert(err.error);
+                }
+            } catch (e) { alert("Erreur serveur"); }
+        }
+    </script>
+</body>
+</html>

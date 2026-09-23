@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cotisation - Créer une Caisse</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen p-4 md:p-8 flex items-center justify-center">
+    <div class="max-w-3xl w-full bg-gray-800 rounded-[2.5rem] shadow-2xl border border-gray-700 p-8 md:p-12">
+        <div class="mb-10">
+            <h1 class="text-3xl font-black text-cyan-400 uppercase tracking-tighter">Nouvelle Caisse</h1>
+            <p class="text-gray-500 text-sm font-bold">Configurez les règles de cette caisse spécifique</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <!-- Infos de base -->
+            <div class="space-y-6">
+                <div>
+                    <label class="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">Type de Caisse</label>
+                    <select id="type" class="w-full bg-gray-700 border border-gray-600 rounded-2xl px-5 py-4 text-sm font-bold focus:ring-2 focus:ring-cyan-500 outline-none transition">
+                        <option value="COTISATION_SIMPLE">Cotisation Simple</option>
+                        <option value="PRET">Caisse de Prêt</option>
+                        <option value="SECOURS">Caisse de Secours</option>
+                        <option value="DEVELOPPEMENT">Développement</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">Libellé</label>
+                    <input id="libelle" type="text" placeholder="Ex: Caisse Scolaire" class="w-full bg-gray-700 border border-gray-600 rounded-2xl px-5 py-4 text-sm font-bold focus:ring-2 focus:ring-cyan-500 outline-none transition">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">Montant Fixe (Optionnel)</label>
+                    <input id="montantFixe" type="number" placeholder="Ex: 5000" class="w-full bg-gray-700 border border-gray-600 rounded-2xl px-5 py-4 text-sm font-bold focus:ring-2 focus:ring-cyan-500 outline-none transition">
+                </div>
+            </div>
+
+            <!-- Paramètres avancés -->
+            <div class="space-y-6">
+                <div class="p-6 bg-gray-900/50 rounded-3xl border border-gray-700">
+                    <h3 class="text-xs font-black text-cyan-400 uppercase mb-4 tracking-widest">Options</h3>
+                    <div class="space-y-4">
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm font-bold text-gray-300">Redistribution</span>
+                            <input type="checkbox" id="redistribution" class="w-6 h-6 rounded-lg bg-gray-700 border-gray-600 text-cyan-500 focus:ring-cyan-500">
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm font-bold text-gray-300">Possibilité de Prêt</span>
+                            <input type="checkbox" id="possibilitePret" onchange="toggleFineLoan()" class="w-6 h-6 rounded-lg bg-gray-700 border-gray-600 text-cyan-500 focus:ring-cyan-500">
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm font-bold text-gray-300">Prêts sur les amendes</span>
+                            <input type="checkbox" id="autoriserPretSurAmendes" class="w-6 h-6 rounded-lg bg-gray-700 border-gray-600 text-cyan-500 focus:ring-cyan-500">
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">Pénalité de Retard</label>
+                    <input id="penaliteRetard" type="number" placeholder="Ex: 500" class="w-full bg-gray-700 border border-gray-600 rounded-2xl px-5 py-4 text-sm font-bold focus:ring-2 focus:ring-cyan-500 outline-none transition">
+                </div>
+            </div>
+        </div>
+
+        <button onclick="saveCaisse()" class="w-full mt-12 bg-cyan-500 hover:bg-cyan-600 text-gray-900 font-black py-5 rounded-3xl shadow-xl shadow-cyan-500/20 transform active:scale-95 transition uppercase tracking-tighter">
+            Enregistrer la Caisse
+        </button>
+
+        <div class="mt-8 text-center">
+            <button onclick="history.back()" class="text-xs font-bold text-gray-600 hover:text-white transition uppercase">Annuler et retourner</button>
+        </div>
+    </div>
+
+    <script>
+        const tontineId = new URLSearchParams(window.location.search).get('tontineId');
+
+        function toggleFineLoan() {
+            const loan = document.getElementById('possibilitePret');
+            const fineLoan = document.getElementById('autoriserPretSurAmendes');
+            if (loan.checked) {
+                fineLoan.checked = false;
+                fineLoan.disabled = true;
+            } else {
+                fineLoan.disabled = false;
+            }
+        }
+
+        async function saveCaisse() {
+            if (!tontineId || tontineId === '${tontineId}') {
+                return alert("Erreur : ID de Tontine invalide. Veuillez retourner à la page précédente et rafraîchir.");
+            }
+
+            const data = {
+                tontineId,
+                type: document.getElementById('type').value,
+                libelle: document.getElementById('libelle').value,
+                montantFixe: document.getElementById('montantFixe').value || null,
+                redistribution: document.getElementById('redistribution').checked,
+                possibilitePret: document.getElementById('possibilitePret').checked,
+                autoriserPretSurAmendes: document.getElementById('autoriserPretSurAmendes').checked,
+                penaliteRetardFixe: document.getElementById('penaliteRetard').value || null,
+                updatedAt: Date.now()
+            };
+
+            if (!data.libelle) return alert("Veuillez saisir un nom pour la caisse.");
+
+            try {
+                const res = await fetch('/caisses', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                if (res.ok) {
+                    window.location.href = `/tontine-details?id=${tontineId}`;
+                } else {
+                    const err = await res.json();
+                    alert("Erreur : " + (err.error || "Inconnue"));
+                }
+            } catch (e) {
+                console.error(e);
+                alert("Erreur de connexion au serveur");
+            }
+        }
+    </script>
+</body>
+</html>

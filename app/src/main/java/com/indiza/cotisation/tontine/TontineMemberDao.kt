@@ -25,6 +25,9 @@ interface TontineMemberDao {
     @Query("SELECT * FROM tontine_members WHERE tontineId = :tontineId AND isActive = 1")
     suspend fun getTontineMembers(tontineId: Long): List<TontineMemberEntity>
 
+    @Query("SELECT * FROM tontine_members WHERE tontineId = :tontineId AND phone = :phone LIMIT 1")
+    suspend fun getMemberByPhone(tontineId: Long, phone: String): TontineMemberEntity?
+
     @Query("SELECT COUNT(*) FROM tontine_members WHERE tontineId = :tontineId AND isActive = 1")
     suspend fun getMemberCount(tontineId: Long): Int
 
@@ -116,4 +119,12 @@ interface TontineMemberDao {
     @Query("SELECT * FROM tontine_members WHERE tontineId = :tontineId AND userId = :userId")
     suspend fun getMemberEntity(tontineId: Long, userId: String): TontineMemberEntity?
 
+    @Query("SELECT * FROM tontine_members WHERE id = :memberId")
+    suspend fun getMemberById(memberId: Long): TontineMemberEntity?
+
+    @Query("SELECT * FROM tontine_members WHERE remoteId = :remoteId")
+    suspend fun getMemberByRemoteId(remoteId: String): TontineMemberEntity?
+
+    @Query("SELECT * FROM tontine_members WHERE tontineId = :tontineId AND remoteId = :remoteId")
+    suspend fun getMemberByRemoteId(tontineId: Long, remoteId: String): TontineMemberEntity?
 }

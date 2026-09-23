@@ -46,6 +46,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -85,20 +86,27 @@ fun CagnotteValidationScreen(
     var montantFinal by remember { mutableStateOf("0") }
 
 
-    var doitCloturer by remember { mutableStateOf(false) }
     var cycleDejaCloture by remember { mutableStateOf(false) }
 
-    LaunchedEffect(caisse.id, participant.member.id) {
-        details = viewModel.getCagnotteDetails(caisse, participant, cycleId)
+    var nbPartsAEncaisser by remember { mutableIntStateOf(1) }
+    var partsPlanifiees by remember { mutableIntStateOf(0) }
+
+    val fraisParPart = caisse.fraisCaisse ?: 0L
+    val totalFrais = fraisParPart * nbPartsAEncaisser
+
+    var showNotifDialog by remember { mutableStateOf(false) }
+    val tontineMembers by viewModel.getTontineMembers(caisse.tontineId).collectAsState(initial = emptyList<TontineMemberWithUser>())
+    var isTontineOnline by remember { mutableStateOf(false) }
+
+    LaunchedEffect(caisse.id, participant.member.id, nbPartsAEncaisser) {
+        details = viewModel.getCagnotteDetails(caisse, participant, cycleId, nbPartsAEncaisser)
     }
 
-    LaunchedEffect(inclureDettes, inclureEchecs, inclurePenalites, details) {
-        val calcul = details.brut -
-                (if (inclureDettes) details.dettes else 0L) -
-                (if (inclureEchecs) details.echecs else 0L) -
-                (if (inclurePenalites) details.penalites else 0L)
-
-        montantFinal = if (calcul < 0) "0" else calcul.toString()
+    LaunchedEffect(inclureEchecs, details, nbPartsAEncaisser) {
+        val brut = details.brut
+        val echecs = if (inclureEchecs) details.echecs else 0L
+        val calculCaisse = brut - echecs
+        montantFinal = if (calculCaisse < 0) "0" else calculCaisse.toString()
     }
 
     var peutValider by remember { mutableStateOf(false) }
@@ -120,14 +128,14 @@ fun CagnotteValidationScreen(
 
         val cycle = viewModel.cycleDao.getCycleById(cycleId)
         cycleDejaCloture = cycle?.estCloture ?: false
-        if (!cycleDejaCloture) doitCloturer = true
+
+        val tontine = viewModel.caisseDao.getTontineByCaisse(caisse.id)
+        isTontineOnline = tontine?.isOnline ?: false
     }
 
     val montantSaisi = montantFinal.toLongOrNull() ?: 0L
     val depasseSolde = montantSaisi > soldeCaisseReel
 
-    var nbPartsAEncaisser by remember { mutableIntStateOf(1) }
-    var partsPlanifiees by remember { mutableIntStateOf(0) }
     val maxPartsDisponibles = participant.nombreParts
 
     LaunchedEffect(caisse.id, cycleId, participant.member.id) {
@@ -151,6 +159,58 @@ fun CagnotteValidationScreen(
                     },
                     colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.White)
                 )
+            },
+            bottomBar = {
+                Surface(
+                    color = Color.White,
+                    shadowElevation = 8.dp
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        // Bouton de Confirmation
+                        Button(
+                            onClick = {
+                                viewModel.enregistrerCagnotte(
+                                    caisseId = caisse.id,
+                                    memberId = participant.member.id,
+                                    montantCaisse = montantFinal.toLongOrNull() ?: 0L,
+                                    nbParts = nbPartsAEncaisser,
+                                    montantDettes = if (inclureDettes) details.dettes else 0L,
+                                    montantPenalites = if (inclurePenalites) details.penalites else 0L,
+                                    montantEchecs = if (inclureEchecs) details.echecs else 0L,
+                                    isOnline = isTontineOnline,
+                                    onSuccess = {
+                                        showNotifDialog = true
+                                    },
+                                    cycleId = cycleId
+                                )
+                            },
+                            enabled = peutValiderStatut && !depasseSolde && montantSaisi > 0,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(56.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (peutValider) AfroGold else Color.Gray,
+                                disabledContainerColor = Color.Gray.copy(alpha = 0.3f)
+                            ),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Text(
+                                if (peutValider) "VALIDER LA REMISE" else "EN ATTENTE DES COTISATIONS",
+                                color = if (peutValider) Color.Black else Color.White.copy(alpha = 0.5f),
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        TextButton(onClick = onDismiss, modifier = Modifier.padding(top = 8.dp)) {
+                            Text("Annuler", color = Color.Gray)
+                        }
+                    }
+                }
             }
         ) { padding ->
             Column(
@@ -159,17 +219,13 @@ fun CagnotteValidationScreen(
                     .padding(padding)
                     .padding(12.dp)
                     .verticalScroll(scrollState),
-
                 horizontalAlignment = Alignment.CenterHorizontally,
-
             ) {
-
                 OptionSwitch(
                     label = "Déduire les échecs (Cotisations impayées)",
                     checked = inclureEchecs,
                     labelColor = Color.Black,
                     onCheckedChange = { inclureEchecs = it }
-
                 )
 
                 OptionSwitch(
@@ -244,30 +300,73 @@ fun CagnotteValidationScreen(
                     )
                 }
 
+                if (totalFrais > 0) {
+                    Text(
+                        "Frais de caisse : $totalFrais FCFA ($fraisParPart F / part)",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.Red.copy(alpha = 0.7f),
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
                         containerColor = if (depasseSolde) Color.Red.copy(alpha = 0.1f)
-                        else Color.Black.copy(alpha = 0.05f)
+                        else NeonCyan.copy(alpha = 0.05f)
                     ),
-                    border = BorderStroke(1.dp, if (depasseSolde) Color.Red else Color.Black.copy(alpha = 0.1f))
+                    border = BorderStroke(1.dp, if (depasseSolde) Color.Red else NeonCyan.copy(alpha = 0.1f))
                 ) {
                     Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("MONTANT À PERCEVOIR", style = MaterialTheme.typography.labelMedium, color = Color.Black)
+                        Text("SORTIE DE CAISSE (BRUT - ÉCHECS)", style = MaterialTheme.typography.labelMedium, color = NeonCyan, fontWeight = FontWeight.Bold)
 
                         BasicTextField(
                             value = montantFinal,
                             onValueChange = { montantFinal = it },
-                            textStyle = MaterialTheme.typography.displaySmall.copy(
-                                color = if (depasseSolde) Color.Red else Color.Black,
-                                textAlign = TextAlign.Center
+                            textStyle = MaterialTheme.typography.headlineMedium.copy(
+                                color = if (depasseSolde) Color.Red else NeonCyan,
+                                textAlign = TextAlign.Center,
+                                fontWeight = FontWeight.Black
                             ),
                             modifier = Modifier.fillMaxWidth(),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                         )
 
+                        val currentMontantCaisse = montantFinal.toLongOrNull() ?: 0L
+                        val currentDettes = if (inclureDettes) details.dettes else 0L
+                        val currentPenalites = if (inclurePenalites) details.penalites else 0L
+                        val currentFrais = totalFrais
+                        val net = currentMontantCaisse - currentDettes - currentPenalites - currentFrais
+
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                            horizontalAlignment = Alignment.Start
+                        ) {
+                            if (inclureEchecs && details.echecs > 0) {
+                                Text("- Échecs : ${details.echecs} F", color = Color.Red.copy(alpha = 0.6f), style = MaterialTheme.typography.labelSmall)
+                            }
+                            if (currentDettes > 0) {
+                                Text("- Dettes : $currentDettes F", color = Color.Red.copy(alpha = 0.6f), style = MaterialTheme.typography.labelSmall)
+                            }
+                            if (currentPenalites > 0) {
+                                Text("- Pénalités : $currentPenalites F", color = Color.Red.copy(alpha = 0.6f), style = MaterialTheme.typography.labelSmall)
+                            }
+                            if (currentFrais > 0) {
+                                Text("- Frais caisse : $currentFrais F", color = Color.Red.copy(alpha = 0.6f), style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+
                         Text(
-                            "Maximum en caisse : $soldeCaisseReel FCFA",
+                            "NET À PERCEVOIR : ${if (net < 0) 0 else net} FCFA",
+                            color = AfroGold,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        Text(
+                            "Maximum disponible en caisse : $soldeCaisseReel FCFA",
                             color = if (depasseSolde) Color.Red else Color.DarkGray,
                             style = MaterialTheme.typography.bodySmall
                         )
@@ -302,41 +401,18 @@ fun CagnotteValidationScreen(
                 } else if (depasseSolde) {
                     ValidationAlert(text = "Fonds insuffisants en caisse (Solde: $soldeCaisseReel).")
                 }
-
-                Spacer(Modifier.weight(1f))
-
-                // Bouton de Confirmation
-                Button(
-                    onClick = {
-                        viewModel.enregistrerCagnotte(
-                            caisseId = caisse.id,
-                            memberId = participant.member.id,
-                            montant = montantFinal.toLongOrNull() ?: 0L,
-                            nbParts = nbPartsAEncaisser,
-                            onSuccess = onDismiss,
-                            isClose = doitCloturer,
-                            cycleId = cycleId
-                        )
-                    },
-                    enabled = peutValiderStatut && !depasseSolde && montantSaisi > 0,
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (peutValider) AfroGold else Color.Gray,
-                        disabledContainerColor = Color.Gray.copy(alpha = 0.3f)
-                    ),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Text(
-                        if (peutValider) "VALIDER LA REMISE" else "EN ATTENTE DES COTISATIONS",
-                        color = if (peutValider) Color.Black else Color.White.copy(alpha = 0.5f),
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                TextButton(onClick = onDismiss, modifier = Modifier.padding(top = 16.dp)) {
-                    Text("Annuler", color = Color.Gray)
-                }
             }
+        }
+
+        if (showNotifDialog) {
+            PostPayoutNotificationDialog(
+                members = tontineMembers,
+                isOnline = isTontineOnline,
+                onDismiss = onDismiss,
+                onSend = { _, _, _ ->
+                    onDismiss()
+                }
+            )
         }
     }
 }

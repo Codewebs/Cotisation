@@ -48,12 +48,16 @@ data class CaisseEntity(
     val penaliteRetardFixe: Long? = null,
     val penaliteEchecFixe: Long? = null,
     val dateLimiteJour: Int? = null,
+    val fraisCaisse: Long? = null,
     val ordreFige: Boolean = false,
 
     val possibilitePret: Boolean = false,
+    val autoriserPretSurAmendes: Boolean = false,
     val dureeCycles: Int? = null,
     val plafondPret: Long? = null, // Pour la caisse de prêt basique
     val isBasique: Boolean = false, // True pour la caisse de prêt automatique
+    val statut: CaisseStatus = CaisseStatus.ACTIVE,
+    val respecterFrequenceStrictement: Boolean = false,
 
     override val remoteId: String? = null,
     override val syncStatus: SyncStatus = SyncStatus.PENDING_CREATE,
@@ -61,4 +65,6 @@ data class CaisseEntity(
 ) : Syncable<Long>
 
 enum class TypeInteret { SIMPLE, COMPOSE }
+
+enum class CaisseStatus { ACTIVE, CLOTUREE }
 

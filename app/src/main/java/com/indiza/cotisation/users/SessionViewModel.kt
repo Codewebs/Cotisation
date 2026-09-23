@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 @HiltViewModel
 class SessionViewModel @Inject constructor(
     private val sessionDao: SessionDao,
+    private val tontineRepository: com.indiza.cotisation.tontine.TontineRepository,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -38,6 +39,7 @@ class SessionViewModel @Inject constructor(
 
     fun logout() {
         viewModelScope.launch {
+            tontineRepository.clearLocalData()
             sessionDao.clearSession()
         }
     }

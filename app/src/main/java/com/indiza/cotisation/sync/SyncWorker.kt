@@ -9,10 +9,10 @@ import dagger.assisted.AssistedInject
 
 @HiltWorker
 class SyncWorker @AssistedInject constructor(
-    @Assisted appContext: Context,
+    @Assisted context: Context,
     @Assisted workerParams: WorkerParameters,
     private val syncEngine: SyncEngine
-) : CoroutineWorker(appContext, workerParams) {
+) : CoroutineWorker(context, workerParams) {
 
     override suspend fun doWork(): Result {
         return try {

@@ -19,6 +19,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,6 +48,11 @@ fun RemboursementScreen(
     val resteAPayer by viewModel.getEtatDetteMembre(caisseId, memberId).collectAsState(initial = 0L)
     var montantSaisi by remember { mutableStateOf("") }
     var estInteret by remember { mutableStateOf(false) }
+    var originCaisseId by remember { mutableStateOf<Long?>(null) }
+
+    LaunchedEffect(memberId, caisseId) {
+        originCaisseId = viewModel.getOriginCaisseId(memberId, caisseId)
+    }
 
     // On convertit la dette (négative) en montant positif pour l'affichage
     val detteAffichage = -(resteAPayer ?: 0L)
@@ -101,7 +107,7 @@ fun RemboursementScreen(
         Button(
             onClick = {
                 if (isMontantValide) {
-                    viewModel.enregistrerRemboursement(caisseId, memberId, montantLong, cycleId, estInteret)
+                    viewModel.enregistrerRemboursement(caisseId, memberId, montantLong, cycleId, estInteret, originCaisseId)
                     onSuccess()
                 }
             },

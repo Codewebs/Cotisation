@@ -11,5 +11,6 @@ data class CreateTontineUiState(
     val caisses: List<CaisseDraft> = emptyList(),
     val isSaving: Boolean = false,
     val isAnonymous: Boolean = false,
+    val isOnline: Boolean = true,
     val error: String? = null
 )

@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cotisation - Enregistrer un Paiement</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen p-4 md:p-8 flex items-center justify-center">
+    <div class="max-w-2xl w-full bg-gray-800 rounded-[2.5rem] shadow-2xl border border-gray-700 p-8 md:p-12">
+        <div class="mb-10 text-center">
+            <h1 class="text-3xl font-black text-cyan-400 uppercase tracking-tighter">Enregistrer un Paiement</h1>
+            <p id="caisse-info" class="text-gray-500 text-sm font-bold mt-2">Chargement de la caisse...</p>
+        </div>
+
+        <div class="space-y-8">
+            <!-- Sélection du Membre -->
+            <div>
+                <label class="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-3">Membre Cotisant</label>
+                <select id="member-select" class="w-full bg-gray-700 border border-gray-600 rounded-2xl px-5 py-4 text-sm font-bold text-white focus:ring-2 focus:ring-cyan-500 outline-none appearance-none transition">
+                    <option value="">-- CHOISIR UN MEMBRE --</option>
+                </select>
+            </div>
+
+            <!-- Montant -->
+            <div>
+                <label class="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-3">Montant à Encaisser (FCFA)</label>
+                <input id="montant" type="number" placeholder="0" class="w-full bg-gray-700 border border-gray-600 rounded-2xl px-5 py-5 text-2xl font-black text-cyan-400 focus:ring-2 focus:ring-cyan-500 outline-none transition text-center">
+            </div>
+
+            <!-- Motif -->
+            <div>
+                <label class="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-3">Motif / Commentaire (Optionnel)</label>
+                <input id="motif" type="text" placeholder="Ex: Cotisation Septembre" class="w-full bg-gray-700 border border-gray-600 rounded-2xl px-5 py-4 text-sm font-bold focus:ring-2 focus:ring-cyan-500 outline-none transition">
+            </div>
+
+            <button onclick="submitTransaction()" class="w-full mt-6 bg-cyan-500 hover:bg-cyan-600 text-gray-900 font-black py-5 rounded-3xl shadow-xl shadow-cyan-500/20 transform active:scale-95 transition uppercase tracking-tighter">
+                Valider l'Encaissement
+            </button>
+        </div>
+
+        <div id="msg-box" class="hidden mt-6 p-4 rounded-2xl text-sm text-center font-bold"></div>
+
+        <div class="mt-8 text-center">
+            <button onclick="history.back()" class="text-xs font-bold text-gray-600 hover:text-white transition uppercase">Annuler et retourner</button>
+        </div>
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const caisseId = urlParams.get('caisseId');
+        let currentCycleId = null;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if (!caisseId) {
+                alert("Erreur: ID Caisse manquant");
+                window.location.href = '/profile';
+                return;
+            }
+            fetchCaisseAndMembers();
+        });
+
+        async function fetchCaisseAndMembers() {
+            try {
+                // 1. Charger les détails de la caisse pour avoir le cycle actif
+                const res = await fetch(`/caisses/${caisseId}`);
+                const caisse = await res.json();
+
+                if (caisse.cycles && caisse.cycles.length > 0) {
+                    currentCycleId = caisse.cycles[0].id;
+                    document.getElementById('caisse-info').innerText = `${caisse.libelle} • Cycle #${caisse.cycles[0].numeroCycle}`;
+                    if (caisse.montantFixe) {
+                        document.getElementById('montant').value = caisse.montantFixe;
+                    }
+                } else {
+                    document.getElementById('caisse-info').innerText = `${caisse.libelle} • Aucun cycle actif`;
+                }
+
+                // 2. Charger les membres de la tontine pour peupler le select
+                const tontineRes = await fetch(`/tontines/${caisse.tontineId}`);
+                const tontine = await tontineRes.json();
+
+                const select = document.getElementById('member-select');
+                tontine.members.forEach(m => {
+                    const opt = document.createElement('option');
+                    opt.value = m.id;
+                    opt.innerText = m.nomSaisi.toUpperCase();
+                    select.appendChild(opt);
+                });
+
+                // Si un memberId est passé en paramètre, on le sélectionne
+                const preselectedMemberId = urlParams.get('memberId');
+                if (preselectedMemberId) {
+                    select.value = preselectedMemberId;
+                }
+
+            } catch (e) {
+                console.error(e);
+                showMsg("Erreur lors du chargement des données", false);
+            }
+        }
+
+        async function submitTransaction() {
+            const memberId = document.getElementById('member-select').value;
+            const montant = document.getElementById('montant').value;
+            const motif = document.getElementById('motif').value;
+            const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+
+            if (!memberId) return showMsg("Veuillez sélectionner un membre", false);
+            if (!montant || montant <= 0) return showMsg("Veuillez saisir un montant valide", false);
+            if (!currentCycleId) return showMsg("Aucun cycle actif trouvé pour cette caisse", false);
+            if (!currentUser) return showMsg("Session expirée, veuillez vous reconnecter", false);
+
+            try {
+                const res = await fetch('/transactions', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        caisseId,
+                        memberId,
+                        cycleId: currentCycleId,
+                        validatedById: currentUser.id,
+                        montant: parseInt(montant),
+                        type: 'COTISATION',
+                        motif: motif || "Cotisation"
+                    })
+                });
+
+                if (res.ok) {
+                    showMsg("Paiement enregistré avec succès !", true);
+                    setTimeout(() => history.back(), 1500);
+                } else {
+                    const err = await res.json();
+                    showMsg(err.error || "Erreur lors de l'enregistrement", false);
+                }
+            } catch (e) {
+                showMsg("Erreur de connexion au serveur", false);
+            }
+        }
+
+        function showMsg(text, isSuccess) {
+            const msgBox = document.getElementById('msg-box');
+            msgBox.classList.remove('hidden', 'bg-red-900/50', 'text-red-400', 'bg-green-900/50', 'text-green-400');
+            msgBox.classList.add(isSuccess ? 'bg-green-900/50' : 'bg-red-900/50', isSuccess ? 'text-green-400' : 'text-red-400');
+            msgBox.innerText = text;
+            msgBox.classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>

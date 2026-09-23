@@ -51,6 +51,10 @@ sealed class Screen(val route: String) {
     object RemboursementReport : Screen("remboursement_report/{caisseId}/{cycleId}") {
         fun createRoute(caisseId: Long, cycleId: Long) = "remboursement_report/$caisseId/$cycleId"
     }
+    object JoinInvitation : Screen("join_invitation?code={code}") {
+        fun createRoute(code: String) = "join_invitation?code=$code"
+    }
+    object Profile : Screen("profile")
 }
 
-enum class CaisseAction { COTISATION, PRET, REMBOURSEMENT, SORTIE_SECOURS, TOUR_ENCAISSER, SORTIE, VOIR_TOURS }
+enum class CaisseAction { COTISATION, PRET, REMBOURSEMENT, SORTIE_SECOURS, TOUR_ENCAISSER, SORTIE, TRANSFERT_ENTREE, VOIR_TOURS }

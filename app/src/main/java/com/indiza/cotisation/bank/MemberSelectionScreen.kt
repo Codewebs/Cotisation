@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.PersonRemove
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -51,7 +52,8 @@ import com.indiza.cotisation.CaisseAction
 import com.indiza.cotisation.caisses.CaisseDetailViewModel
 import com.indiza.cotisation.tontine.TontineMemberWithUser
 import com.indiza.cotisation.tools.NeonCyan
-import androidx.compose.runtime.* // ← IMPORT COMPLET
+import com.indiza.cotisation.tools.CosmicBackground
+import androidx.compose.runtime.* 
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -72,10 +74,12 @@ fun MemberSelectionScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val cycleId = state.currentCycle?.id ?: 0L
 
-    val participantsAafficher = if (actionType == CaisseAction.TOUR_ENCAISSER) {
-        state.participantsPlanifies
-    } else {
-        state.participants
+    val participantsAafficher = when (actionType) {
+        CaisseAction.TOUR_ENCAISSER -> state.participantsPlanifies
+        CaisseAction.COTISATION -> state.participants.filter { p ->
+            !state.participantsAjour.contains(p.member.id)
+        }
+        else -> state.participants
     }
 
     LaunchedEffect(state, actionType) {
@@ -101,122 +105,149 @@ fun MemberSelectionScreen(
     if (state.currentCycle == null) return
     val membresCotises = if (actionType == CaisseAction.COTISATION) state.dejaCotise.size else 0
 
-    Scaffold(
-        containerColor = Color.Transparent,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = when(actionType) {
-                            CaisseAction.TOUR_ENCAISSER -> "Attribuer Cagnotte"
-                            CaisseAction.COTISATION -> "Enregistrer Cotisation"
-                            CaisseAction.PRET -> "Accorder un Prêt"
-                            CaisseAction.REMBOURSEMENT -> "Enregistrer Remboursement"
-                            CaisseAction.SORTIE_SECOURS -> "Sortie de Secours"
-                            CaisseAction.SORTIE -> "Nouvelle Sortie"
-                            else -> "Sélectionner un membre"
-                        },
-                        color = Color.White,
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, null, tint = Color.White)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
-            )
-        },
-        bottomBar = {
-            if (actionType == CaisseAction.COTISATION || actionType == CaisseAction.TOUR_ENCAISSER) {
-                val participantsNonTraites = participantsAafficher.filter { p ->
-                    if (actionType == CaisseAction.COTISATION) !state.dejaCotise.contains(p.memberWithUser.member.id)
-                    else true
-                }
-
-                if (participantsNonTraites.isNotEmpty()) {
-                    Button(
-                        onClick = {
-                            viewModel.reinitialiserExclusions()
-                            navController.navigate("recapitulatif_masse/$caisseId/${actionType.name}/$cycleId")
-                        },
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = NeonCyan)
+    CosmicBackground {
+        Scaffold(
+            containerColor = Color.Transparent,
+            topBar = {
+                Surface(
+                    color = Color(0xFF111827).copy(alpha = 0.85f),
+                    shape = RoundedCornerShape(bottomStart = 18.dp, bottomEnd = 18.dp),
+                    border = BorderStroke(0.5.dp, NeonCyan.copy(alpha = 0.12f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.DoneAll, null, tint = Color.Black)
-                        Spacer(Modifier.width(8.dp))
-                        Text("VALIDER POUR TOUS (${participantsNonTraites.size})", color = Color.Black, fontWeight = FontWeight.Bold)
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White)
+                        }
+                        
+                        Column {
+                            val cycleSuffix = state.currentCycle?.let { " - Cycle n°${it.numeroCycle}" } ?: ""
+                            Text(
+                                text = when(actionType) {
+                                    CaisseAction.TOUR_ENCAISSER -> "Attribuer Cagnotte"
+                                    CaisseAction.COTISATION -> "Enregistrer Cotisation"
+                                    CaisseAction.PRET -> "Accorder un Prêt"
+                                    CaisseAction.REMBOURSEMENT -> "Enregistrer Remboursement"
+                                    CaisseAction.SORTIE_SECOURS -> "Sortie de Secours"
+                                    CaisseAction.SORTIE -> "Nouvelle Sortie"
+                                    else -> "Sélectionner un membre"
+                                } + cycleSuffix,
+                                color = Color.White,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            state.caisse?.let {
+                                Text(
+                                    it.libelle,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = NeonCyan
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            bottomBar = {
+                if (actionType == CaisseAction.COTISATION || actionType == CaisseAction.TOUR_ENCAISSER) {
+                    val participantsNonTraites = participantsAafficher.filter { p ->
+                        if (actionType == CaisseAction.COTISATION) !state.dejaCotise.contains(p.memberWithUser.member.id)
+                        else true
+                    }
+
+                    if (participantsNonTraites.isNotEmpty()) {
+                        Button(
+                            onClick = {
+                                viewModel.reinitialiserExclusions()
+                                navController.navigate("recapitulatif_masse/$caisseId/${actionType.name}/$cycleId")
+                            },
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = NeonCyan)
+                        ) {
+                            Icon(Icons.Default.DoneAll, null, tint = Color.Black)
+                            Spacer(Modifier.width(8.dp))
+                            Text("VALIDER POUR TOUS (${participantsNonTraites.size})", color = Color.Black, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
-        }
-    ) { padding ->
-        if (participantsAafficher.isEmpty()) {
-            EmptyStatePlaceholder(actionType, padding)
-        } else {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
-            ) {
-                if (actionType == CaisseAction.COTISATION) {
-                    Surface(
-                        color = NeonCyan.copy(alpha = 0.08f),
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, NeonCyan.copy(alpha = 0.18f)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Cotisations",
-                                color = NeonCyan,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "$membresCotises / ${participantsAafficher.size}",
-                                color = Color.White,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                }
-
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) { padding ->
+            if (participantsAafficher.isEmpty()) {
+                EmptyStatePlaceholder(actionType, state.currentCycle?.numeroCycle, padding)
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding)
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
                 ) {
-                    items(participantsAafficher) { participant ->
-                        val memberId = participant.memberWithUser.member.id
-                        val aDejaCotise = state.dejaCotise.contains(memberId)
-                        val estPlanifie = actionType == CaisseAction.TOUR_ENCAISSER && 
-                                          state.participantsPlanifies.any { it.member.id == memberId }
-
-                        val estDesactive = when (actionType) {
-                            CaisseAction.COTISATION -> aDejaCotise
-                            else -> false
+                    if (actionType == CaisseAction.COTISATION) {
+                        Surface(
+                            color = NeonCyan.copy(alpha = 0.08f),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, NeonCyan.copy(alpha = 0.18f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Cotisations",
+                                    color = NeonCyan,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "$membresCotises / ${participantsAafficher.size}",
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
+                        Spacer(Modifier.height(8.dp))
+                    }
 
-                        val messageStatus = when {
-                            actionType == CaisseAction.COTISATION && aDejaCotise -> "Cotisation déjà effectuée"
-                            estPlanifie -> "TOUR PROGRAMMÉ"
-                            else -> null
-                        }
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        items(participantsAafficher) { participant ->
+                            val memberId = participant.memberWithUser.member.id
+                            val aDejaCotise = state.dejaCotise.contains(memberId)
+                            val estPlanifie = actionType == CaisseAction.TOUR_ENCAISSER && 
+                                              state.participantsPlanifies.any { it.member.id == memberId }
 
-                        MemberSelectionCard(
+                            val estDesactive = when (actionType) {
+                                CaisseAction.COTISATION -> aDejaCotise
+                                else -> false
+                            }
+
+                            val messageStatus = when {
+                                actionType == CaisseAction.COTISATION && aDejaCotise -> "Cotisation déjà effectuée"
+                                estPlanifie -> "TOUR PROGRAMMÉ"
+                                else -> null
+                            }
+
+                            MemberSelectionCard(
                             participant = participant,
                             estDesactive = estDesactive,
                             messageStatus = messageStatus,
+                            caisse = state.caisse,
+                            actionType = actionType,
+                            montantRestant = state.getMontantRestant(memberId),
+                            onCancelPlan = if (estPlanifie) {
+                                { viewModel.annulerTour(memberId, cycleId) }
+                            } else null,
                             onClick = { onMemberSelected(participant, cycleId) }
                         )
+                        }
                     }
                 }
             }
@@ -229,6 +260,10 @@ fun MemberSelectionCard(
     participant: ParticipantWithParts,
     estDesactive: Boolean,
     messageStatus: String?,
+    caisse: com.indiza.cotisation.caisses.CaisseEntity? = null,
+    actionType: CaisseAction? = null,
+    montantRestant: Long = 0L,
+    onCancelPlan: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
     Card(
@@ -281,13 +316,39 @@ fun MemberSelectionCard(
                         Text(it, color = AfroGold, style = MaterialTheme.typography.labelSmall)
                     }
                 }
+                
+                // Afficher le reste à cotiser pour les caisses à redistribution
+                caisse?.let { c ->
+                    if (c.redistribution && actionType == CaisseAction.COTISATION) {
+                        val montantPart = c.montantFixe ?: 0L
+                        if (montantRestant < (montantPart * participant.nombreParts) && montantRestant > 0) {
+                            Text(
+                                "Reste à recouvrer : $montantRestant F",
+                                color = Color.Red.copy(alpha = 0.8f),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
             }
 
-            Badge(
-                containerColor = AfroGold.copy(alpha = 0.18f),
-                modifier = Modifier.padding(start = 8.dp)
-            ) {
-                Text("${participant.nombreParts}P", color = AfroGold, style = MaterialTheme.typography.labelSmall)
+            if (onCancelPlan != null) {
+                IconButton(onClick = onCancelPlan) {
+                    Icon(
+                        imageVector = Icons.Default.PersonRemove,
+                        contentDescription = "Annuler planification",
+                        tint = Color.Red,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            } else {
+                Badge(
+                    containerColor = AfroGold.copy(alpha = 0.18f),
+                    modifier = Modifier.padding(start = 8.dp)
+                ) {
+                    Text("${participant.nombreParts}P", color = AfroGold, style = MaterialTheme.typography.labelSmall)
+                }
             }
 
             if (!estDesactive) {
@@ -300,12 +361,16 @@ fun MemberSelectionCard(
 }
 
 @Composable
-fun EmptyStatePlaceholder(actionType: CaisseAction, padding: PaddingValues) {
+fun EmptyStatePlaceholder(actionType: CaisseAction, cycleNum: Int?, padding: PaddingValues) {
     Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+        val message = if (actionType == CaisseAction.TOUR_ENCAISSER) {
+            val cycleInfo = if (cycleNum != null) " n°$cycleNum" else ""
+            "Aucun tour planifié pour le cycle$cycleInfo.\nVeuillez d'abord utiliser 'Ajouter Tour' dans les détails de la caisse."
+        } else {
+            "Aucun participant trouvé."
+        }
         Text(
-            text = if (actionType == CaisseAction.TOUR_ENCAISSER)
-                "Aucun tour planifié pour ce cycle.\nVeuillez d'abord utiliser 'Ajouter Tour' dans les détails de la caisse."
-            else "Aucun participant trouvé.",
+            text = message,
             color = Color.Gray,
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(32.dp)

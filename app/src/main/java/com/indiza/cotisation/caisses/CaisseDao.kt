@@ -57,12 +57,21 @@ interface CaisseDao {
     @Query("SELECT * FROM caisses WHERE remoteId = :remoteId")
     suspend fun getByRemoteId(remoteId: String?): CaisseEntity?
 
+    @Query("DELETE FROM caisses WHERE id = :id")
+    suspend fun deleteCaisseById(id: Long)
+
+    @Query("SELECT * FROM tontines WHERE id = (SELECT tontineId FROM caisses WHERE id = :caisseId)")
+    suspend fun getTontineByCaisse(caisseId: Long): com.indiza.cotisation.tontine.TontineEntity?
+
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun addParticipantToCaisse(participant: CaisseParticipantEntity)
 
     @Query("DELETE FROM caisse_participants WHERE caisseId = :caisseId AND memberId = :memberId")
     suspend fun removeParticipantFromCaisse(caisseId: Long, memberId: Long)
+
+    @Query("SELECT * FROM caisse_participants WHERE caisseId = :caisseId")
+    suspend fun getParticipantsByCaisseRaw(caisseId: Long): List<CaisseParticipantEntity>
 
     @Transaction
     suspend fun syncCaisseParticipants(caisseId: Long, selectedMemberIds: List<Long>) {

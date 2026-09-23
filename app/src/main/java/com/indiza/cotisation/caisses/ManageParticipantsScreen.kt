@@ -23,6 +23,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,6 +45,12 @@ fun ManageParticipantsScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
+    LaunchedEffect(caisseId) {
+        println("DEBUG_MANAGE: Ouverture de l'écran de gestion des participants pour caisse $caisseId")
+        println("DEBUG_MANAGE:   - Membres tontine disponibles: ${state.allTontineMembers.size}")
+        println("DEBUG_MANAGE:   - Participants actuels: ${state.participants.size}")
+    }
+
     val allSelected = state.allTontineMembers.isNotEmpty() && 
                       state.allTontineMembers.all { m -> state.participants.any { it.member.id == m.member.id } }
 
@@ -57,12 +64,14 @@ fun ManageParticipantsScreen(
                     }
                 },
                 actions = {
-                    TextButton(onClick = { viewModel.toggleAllParticipants(!allSelected) }) {
-                        Text(
-                            text = if (allSelected) "TOUT DÉSELECTIONNER" else "TOUT SÉLECTIONNER",
-                            color = NeonCyan,
-                            style = MaterialTheme.typography.labelMedium
-                        )
+                    if (state.peutAjouterMembres) {
+                        TextButton(onClick = { viewModel.toggleAllParticipants(!allSelected) }) {
+                            Text(
+                                text = if (allSelected) "TOUT DÉSELECTIONNER" else "TOUT SÉLECTIONNER",
+                                color = NeonCyan,
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Black)
@@ -85,8 +94,9 @@ fun ManageParticipantsScreen(
                     phone = memberWithUser.member.phone,
                     isSelected = isChecked,
                     partsCount = totalPartsActuelles,
-                    minPartsAllowed = partsDejaTouchees, // Nouvelle contrainte
-                    canBeRemoved = partsDejaTouchees == 0, // Nouvelle contrainte
+                    minPartsAllowed = partsDejaTouchees, 
+                    canBeRemoved = partsDejaTouchees == 0, 
+                    canBeAdded = state.peutAjouterMembres, // Nouvelle contrainte
                     onToggle = { selected ->
                         viewModel.toggleParticipantCaisse(memberId, selected, totalPartsActuelles)
                     },
@@ -107,6 +117,7 @@ fun ParticipantSelectionRow(
     partsCount: Int,
     minPartsAllowed: Int,
     canBeRemoved: Boolean,
+    canBeAdded: Boolean,
     onToggle: (Boolean) -> Unit,
     onPartsChange: (Int) -> Unit
 ) {
@@ -115,16 +126,21 @@ fun ParticipantSelectionRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Bloquer le décochage si le membre a déjà touché de l'argent
+        // Bloquer le cochage si la caisse est verrouillée pour les nouveaux
+        val enabled = if (isSelected) canBeRemoved else canBeAdded
+
         Checkbox(
             checked = isSelected,
             onCheckedChange = onToggle,
-            enabled = isSelected == false || canBeRemoved
+            enabled = enabled
         )
 
         Column(modifier = Modifier.weight(1f)) {
             Text(name, color = Color.White)
-            if (!canBeRemoved) {
+            if (isSelected && !canBeRemoved) {
                 Text("Déjà bénéficiaire : retrait impossible", color = AfroGold, style = MaterialTheme.typography.labelSmall)
+            } else if (!isSelected && !canBeAdded) {
+                Text("Caisse verrouillée : ajout impossible", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
             }
         }
 

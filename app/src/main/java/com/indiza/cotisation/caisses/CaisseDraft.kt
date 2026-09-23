@@ -12,12 +12,15 @@ data class CaisseDraft(
     var regulariteImposee: Boolean = false,
     var redistribution: Boolean = false,
     var possibilitePret: Boolean = false,
+    var autoriserPretSurAmendes: Boolean = false,
     var tauxInteret: Double? = null,
     var typeInteret: TypeInteret? = null,
     var penaliteRetardFixe: Long? = null,
     var penaliteEchecFixe: Long? = null,
+    var fraisCaisse: Long? = null,
     val dureeCycles: Int? = null,
-    var dateLimiteJour: Int? = null
+    var dateLimiteJour: Int? = null,
+    var respecterFrequenceStrictement: Boolean = false
 )
 
 data class CaisseWithActiveCycle(

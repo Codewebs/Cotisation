@@ -3,6 +3,7 @@ package com.indiza.cotisation.caisses
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -45,7 +46,8 @@ fun CaisseHeader(
     beneficiaires: List<String> = emptyList(),
     montantRecolte: Long = 0L,
     onReportClick: () -> Unit = {},
-    onToggleLock: () -> Unit = {}
+    onToggleLock: () -> Unit = {},
+    onBalanceClick: () -> Unit = {}
 ) {
     if (caisse == null) return
 
@@ -55,7 +57,7 @@ fun CaisseHeader(
     }
     
     val ratioMembres = if (totalParticipants > 0) nombreCotisants.toFloat() / totalParticipants.toFloat() else 0f
-    val ratioSolde = if (montantObjectif > 0L) soldeDuCycle.toFloat() / montantObjectif.toFloat() else 0f
+    val ratioSolde = if (montantObjectif > 0L) montantRecolte.toFloat() / montantObjectif.toFloat() else 0f
     val montantAmende = caisse.penaliteRetardFixe ?: 0L
     val montantPenalite = caisse.penaliteEchecFixe ?: 0L
 
@@ -78,11 +80,20 @@ fun CaisseHeader(
                         color = NeonCyan,
                         fontWeight = FontWeight.Bold
                     )
-                    Text(
-                        text = "Cycle ${currentCycle?.numeroCycle ?: 1}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = AfroGold
-                    )
+                    if (caisse.type != CaisseType.PRET) {
+                        Text(
+                            text = "Cycle ${currentCycle?.numeroCycle ?: 1}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = AfroGold
+                        )
+                    } else {
+                        val taux = caisse.tauxInteret ?: 0.0
+                        Text(
+                            text = "Taux d'intérêt : $taux%",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = AfroGold
+                        )
+                    }
                 }
 
                 MiniTag(caisse.type.name, NeonCyan.copy(alpha = 0.2f))
@@ -90,70 +101,100 @@ fun CaisseHeader(
 
             Spacer(Modifier.height(16.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                DetailMetricCard(
-                    modifier = Modifier.weight(1f),
-                    label = "MÉMBRES À JOUR",
-                    value = "$nombreCotisants / ${if (totalParticipants > 0) totalParticipants else nombreCotisants}",
-                    accentColor = NeonCyan,
-                    helper = "${(ratioMembres * 100).toInt()}%"
-                )
+            if (caisse.type == CaisseType.PRET) {
+                // Design spécifique pour le PRÊT
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    DetailMetricCard(
+                        modifier = Modifier.weight(1f),
+                        label = "CAPITAL DISPONIBLE",
+                        value = "$soldeDuCycle F",
+                        accentColor = NeonCyan,
+                        helper = "Prêtable"
+                    )
 
-                DetailMetricCard(
-                    modifier = Modifier.weight(1f),
-                    label = "SOLDE EN CAISSE / CIBLE",
-                    value = "$soldeDuCycle / $montantObjectif F",
-                    accentColor = AfroGold,
-                    helper = if (soldePrecedent > 0) {
-                        "${(ratioSolde * 100).toInt()}% (Préc. +$soldePrecedent F)"
-                    } else {
-                        "${(ratioSolde * 100).toInt()}%"
-                    }
-                )
+                    DetailMetricCard(
+                        modifier = Modifier.weight(1f),
+                        label = "PRÊTS EN COURS",
+                        value = "$totalPrets F",
+                        accentColor = AfroGold,
+                        helper = "À recouvrer"
+                    )
+                }
+            } else {
+                // Design classique pour les autres (COTISATION, SECOURS, etc.)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    DetailMetricCard(
+                        modifier = Modifier.weight(1f),
+                        label = "MÉMBRES À JOUR",
+                        value = "$nombreCotisants / ${if (totalParticipants > 0) totalParticipants else nombreCotisants}",
+                        accentColor = NeonCyan,
+                        helper = "${(ratioMembres * 100).toInt()}%"
+                    )
+
+                    DetailMetricCard(
+                        modifier = Modifier.weight(1f).clickable { onBalanceClick() },
+                        label = "SOLDE EN CAISSE / CIBLE",
+                        value = "$soldeDuCycle / $montantObjectif F",
+                        accentColor = AfroGold,
+                        helper = if (soldePrecedent > 0) {
+                            "${(ratioSolde * 100).toInt()}% (Préc. +$soldePrecedent F)"
+                        } else {
+                            "${(ratioSolde * 100).toInt()}%"
+                        }
+                    )
+                }
             }
 
             Spacer(Modifier.height(12.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                DetailMetricCard(
-                    modifier = Modifier.weight(1f),
-                    label = if (currentCycle?.estCloture == true) "TOT. AMENDES" else "AMENDES",
-                    value = "${if (currentCycle?.estCloture == true) totalAmendes else montantAmende} F",
-                    accentColor = Color(0xFFFFC857),
-                    helper = "Retard"
-                )
-
-                DetailMetricCard(
-                    modifier = Modifier.weight(1f),
-                    label = if (currentCycle?.estCloture == true) "TOT. PÉNALITÉS" else "PÉNALITÉS",
-                    value = "${if (currentCycle?.estCloture == true) totalPenalites else montantPenalite} F",
-                    accentColor = Color(0xFFFF7A59),
-                    helper = "Échec"
-                )
-
-                if (currentCycle?.estCloture != true) {
+            if (caisse.type != CaisseType.PRET) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     DetailMetricCard(
                         modifier = Modifier.weight(1f),
-                        label = "DATE LIMITE",
-                        value = dateLimitePaiement?.let { "Jour $it" } ?: "—",
-                        accentColor = Color(0xFF8BE9FD),
-                        helper = "Paiement"
+                        label = if (currentCycle?.estCloture == true) "TOT. AMENDES" else "AMENDES",
+                        value = "${if (currentCycle?.estCloture == true) totalAmendes else montantAmende} F",
+                        accentColor = Color(0xFFFFC857),
+                        helper = "Retard"
                     )
-                } else {
+
                     DetailMetricCard(
                         modifier = Modifier.weight(1f),
-                        label = "RÉCOLTÉ",
-                        value = "$montantRecolte F",
-                        accentColor = NeonCyan,
-                        helper = "Total Cycle"
+                        label = if (currentCycle?.estCloture == true) "TOT. PÉNALITÉS" else "PÉNALITÉS",
+                        value = "${if (currentCycle?.estCloture == true) totalPenalites else montantPenalite} F",
+                        accentColor = Color(0xFFFF7A59),
+                        helper = "Échec"
                     )
+
+                    if (currentCycle?.estCloture != true) {
+                        DetailMetricCard(
+                            modifier = Modifier.weight(1f),
+                            label = "DATE LIMITE",
+                            value = dateLimitePaiement?.let { "Jour $it" } ?: "—",
+                            accentColor = Color(0xFF8BE9FD),
+                            helper = "Paiement"
+                        )
+                    } else {
+                        DetailMetricCard(
+                            modifier = Modifier.weight(1f),
+                            label = "RÉCOLTÉ",
+                            value = "$montantRecolte F",
+                            accentColor = NeonCyan,
+                            helper = "Total Cycle"
+                        )
+                    }
                 }
+            } else {
+                // Pour le prêt, on peut mettre d'autres infos si nécessaire,
+                // ou laisser vide pour aérer le design spécifique
             }
 
             if (currentCycle?.estCloture == true) {
@@ -197,7 +238,21 @@ fun CaisseHeader(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (totalPrets > 0) {
+                if (caisse.type == CaisseType.PRET) {
+                    Column {
+                        Text(
+                            "STATUT",
+                            color = GlassWhite.copy(alpha = 0.7f),
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                        Text(
+                            "Ouverte",
+                            color = Color.White,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                } else if (totalPrets > 0) {
                     Column {
                         Text(
                             "PRÊTS EN COURS",
@@ -205,7 +260,7 @@ fun CaisseHeader(
                             style = MaterialTheme.typography.labelSmall
                         )
                         Text(
-                            "$totalPrets F",
+                            "${kotlin.math.abs(totalPrets)} F",
                             color = Color.White,
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold
@@ -257,7 +312,7 @@ fun CaisseHeader(
                     }
                 }
 
-                if (prochainBeneficiaire != null) {
+                if (caisse.type != CaisseType.PRET && prochainBeneficiaire != null) {
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
                             "PROCHAINE RÉPARTITION",

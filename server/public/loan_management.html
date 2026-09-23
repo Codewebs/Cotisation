@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cotisation - Gestion des Prêts</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .glass { background: rgba(17, 24, 39, 0.85); backdrop-filter: blur(10px); }
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen p-4 md:p-8 font-sans">
+    <div class="max-w-6xl mx-auto">
+
+        <!-- HEADER -->
+        <header class="flex justify-between items-center mb-10">
+            <div class="flex items-center gap-4">
+                <button onclick="history.back()" class="p-3 bg-gray-800 rounded-2xl hover:bg-gray-700 transition border border-gray-700">
+                    <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                </button>
+                <div>
+                    <h1 class="text-3xl font-black tracking-tight text-white uppercase leading-none">Gestion des Prêts</h1>
+                    <p class="text-cyan-500 font-mono text-xs font-bold mt-1 uppercase tracking-widest">Suivi & Validations</p>
+                </div>
+            </div>
+        </header>
+
+        <!-- STATS -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+            <div class="bg-gray-800 p-6 rounded-3xl border border-gray-700">
+                <p class="text-[10px] text-gray-500 font-black uppercase mb-1">Encours Total</p>
+                <p id="total-loans" class="text-2xl font-black text-white">0 F</p>
+            </div>
+            <div class="bg-gray-800 p-6 rounded-3xl border border-gray-700">
+                <p class="text-[10px] text-gray-500 font-black uppercase mb-1">Demandes en attente</p>
+                <p id="pending-count" class="text-2xl font-black text-cyan-400">0</p>
+            </div>
+            <div class="bg-gray-800 p-6 rounded-3xl border border-gray-700">
+                <p class="text-[10px] text-gray-500 font-black uppercase mb-1">Retards de paiement</p>
+                <p id="late-count" class="text-2xl font-black text-red-400">0</p>
+            </div>
+        </div>
+
+        <!-- LOAN LIST -->
+        <div class="space-y-6">
+            <h2 class="text-xl font-black uppercase tracking-tighter text-gray-400">Opérations de prêt</h2>
+            <div id="loan-list" class="grid grid-cols-1 gap-4">
+                <!-- Rempli par JS -->
+            </div>
+            <div id="empty-state" class="hidden py-24 text-center text-gray-700 uppercase text-xs font-black tracking-widest bg-gray-800/30 rounded-3xl border border-dashed border-gray-700">
+                Aucun prêt enregistré
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const tontineId = urlParams.get('tontineId');
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if (!tontineId) { window.location.href = '/profile'; return; }
+            fetchLoans();
+        });
+
+        async function fetchLoans() {
+            try {
+                const res = await fetch(`/tontines/${tontineId}/prets`);
+                const loans = await res.json();
+
+                const list = document.getElementById('loan-list');
+                const empty = document.getElementById('empty-state');
+                list.innerHTML = '';
+
+                if (loans.length === 0) {
+                    empty.classList.remove('hidden');
+                    return;
+                }
+
+                let totalEncours = 0;
+                let pending = 0;
+
+                // Charger les membres pour les noms
+                const tRes = await fetch(`/tontines/${tontineId}`);
+                const tontine = await tRes.json();
+                const membersMap = {};
+                tontine.members.forEach(m => membersMap[m.id] = m.nomSaisi);
+
+                loans.forEach(l => {
+                    if (l.statut === 'ACTIF') totalEncours += parseInt(l.montantRestant);
+                    if (l.statut === 'PENDING') pending++;
+
+                    const card = document.createElement('div');
+                    card.className = "bg-gray-800 border border-gray-700 p-6 rounded-3xl flex flex-col md:flex-row justify-between items-center gap-6 group hover:border-cyan-500/30 transition";
+
+                    const statusColors = {
+                        'PENDING': 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
+                        'ACTIF': 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20',
+                        'SOLDE': 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                    };
+
+                    card.innerHTML = `
+                        <div class="flex items-center gap-4 flex-1">
+                            <div class="w-12 h-12 bg-gray-700 rounded-2xl flex items-center justify-center font-black text-cyan-400 border border-cyan-500/10">
+                                ${(membersMap[l.memberId] || l.nomEmprunteurExterne || '?').charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                                <h3 class="font-black text-white uppercase tracking-tight">${membersMap[l.memberId] || l.nomEmprunteurExterne || 'Inconnu'}</h3>
+                                <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Échéance: ${new Date(parseInt(l.dateEcheance)).toLocaleDateString()}</p>
+                            </div>
+                        </div>
+
+                        <div class="text-center md:text-right">
+                            <p class="text-xl font-black text-white">${parseInt(l.montantPrincipal).toLocaleString()} F</p>
+                            <p class="text-[10px] font-bold text-gray-500 uppercase">Intérêt: ${l.tauxInteret}%</p>
+                        </div>
+
+                        <div class="flex items-center gap-4">
+                            <span class="${statusColors[l.statut]} px-3 py-1 rounded-full text-[10px] font-black border uppercase tracking-widest">${l.statut}</span>
+                            ${l.statut === 'PENDING' ? `
+                                <button onclick="approveLoan('${l.id}')" class="bg-cyan-500 hover:bg-cyan-600 text-gray-900 px-4 py-2 rounded-xl text-[10px] font-black transition">VALIDER</button>
+                            ` : ''}
+                            ${l.statut === 'ACTIF' ? `
+                                <button onclick="window.location.href='/repay-loan?loanId=${l.id}'" class="bg-emerald-500 hover:bg-emerald-600 text-gray-900 px-4 py-2 rounded-xl text-[10px] font-black transition">REBOURSER</button>
+                            ` : ''}
+                        </div>
+                    `;
+                    list.appendChild(card);
+                });
+
+                document.getElementById('total-loans').innerText = `${totalEncours.toLocaleString()} F`;
+                document.getElementById('pending-count').innerText = pending;
+
+            } catch (e) { console.error(e); }
+        }
+
+        async function approveLoan(id) {
+            const user = JSON.parse(localStorage.getItem('currentUser'));
+            try {
+                const res = await fetch(`/prets/${id}/approve`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ adminUserId: user.id })
+                });
+                if (res.ok) {
+                    alert("Prêt validé et décaissé !");
+                    fetchLoans();
+                } else {
+                    const err = await res.json();
+                    alert(err.error);
+                }
+            } catch (e) { alert("Erreur réseau"); }
+        }
+    </script>
+</body>
+</html>

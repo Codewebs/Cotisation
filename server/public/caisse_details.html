@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cotisation - Détails de la Caisse</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .neon-border { border: 1px solid rgba(34, 211, 238, 0.2); }
+        .glass { background: rgba(31, 41, 55, 0.8); backdrop-filter: blur(8px); }
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen p-4 md:p-8">
+    <div class="max-w-6xl mx-auto">
+
+        <!-- HEADER -->
+        <header class="flex justify-between items-center mb-10">
+            <div class="flex items-center gap-4">
+                <button onclick="history.back()" class="p-3 bg-gray-800 rounded-2xl hover:bg-gray-700 transition border border-gray-700">
+                    <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                </button>
+                <div>
+                    <h1 id="caisse-name" class="text-3xl font-black tracking-tight text-white uppercase">Chargement...</h1>
+                    <div id="caisse-badge" class="inline-block bg-cyan-500/10 text-cyan-400 text-[10px] font-black px-2 py-0.5 rounded border border-cyan-500/20 uppercase tracking-widest mt-1">TYPE</div>
+                </div>
+            </div>
+
+            <div class="flex gap-3">
+                <button onclick="window.location.href='/journal?caisseId=' + caisseId" class="p-3 bg-gray-800 rounded-2xl border border-gray-700 text-cyan-400 hover:bg-gray-700 transition" title="Journal des transactions">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
+                </button>
+                <button onclick="window.location.href='/record-loan?caisseId=' + caisseId" class="p-3 bg-gray-800 rounded-2xl border border-gray-700 text-cyan-400 hover:bg-gray-700 transition" title="Accorder un prêt">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                </button>
+                <button onclick="window.location.href='/record-expenditure?caisseId=' + caisseId" class="p-3 bg-gray-800 rounded-2xl border border-gray-700 text-red-400 hover:bg-gray-700 transition" title="Sortie de caisse">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+                </button>
+                <button onclick="window.location.href='/distribute-pot?caisseId=' + caisseId" class="p-3 bg-gray-800 rounded-2xl border border-gray-700 text-emerald-400 hover:bg-gray-700 transition" title="Distribuer la cagnotte">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                </button>
+                <button class="p-3 bg-gray-800 rounded-2xl border border-gray-700 text-cyan-400 hover:bg-gray-700 transition">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
+                </button>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+            <!-- LEFT: STATS & INFO -->
+            <div class="lg:col-span-1 space-y-6">
+                <div class="bg-gray-800 rounded-[2rem] p-8 border border-gray-700 shadow-xl glass">
+                    <p class="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Solde Actuel</p>
+                    <p id="caisse-balance" class="text-4xl font-black text-white">0 F</p>
+
+                    <div class="mt-8 pt-6 border-t border-gray-700 grid grid-cols-2 gap-4">
+                        <div>
+                            <p class="text-[9px] font-bold text-gray-500 uppercase tracking-tighter">Membres</p>
+                            <p id="stat-members" class="text-lg font-black text-cyan-400">0</p>
+                        </div>
+                        <div>
+                            <p class="text-[9px] font-bold text-gray-500 uppercase tracking-tighter">Cycle Actuel</p>
+                            <p id="stat-cycle" class="text-lg font-black text-white">#1</p>
+                        </div>
+                    </div>
+
+                    <!-- ADMIN ACTIONS -->
+                    <div class="mt-8">
+                        <button onclick="confirmCloseCycle()" class="w-full bg-red-600/20 hover:bg-red-600 text-red-500 hover:text-white border border-red-500/30 rounded-2xl py-3 text-[10px] font-black uppercase tracking-widest transition duration-300">
+                            Clôturer le Cycle
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-cyan-500 rounded-[2rem] p-8 shadow-xl shadow-cyan-500/20 group cursor-pointer overflow-hidden relative">
+                    <div class="relative z-10">
+                        <p class="text-gray-900 text-xs font-black uppercase tracking-widest mb-1">Prochain Bénéficiaire</p>
+                        <h3 id="next-ben" class="text-2xl font-black text-gray-900 uppercase tracking-tight">À DÉFINIR</h3>
+                    </div>
+                    <svg class="absolute -right-4 -bottom-4 w-24 h-24 text-black/10 transform rotate-12 group-hover:scale-125 transition duration-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM7 9a1 1 0 100-2 1 1 0 000 2zm7-1a1 1 0 11-2 0 1 1 0 012 0zm-.464 5.535a1 1 0 10-1.415-1.414 3 3 0 01-4.242 0 1 1 0 00-1.415 1.414 5 5 0 007.072 0z" clip-rule="evenodd"></path></svg>
+                </div>
+            </div>
+
+            <div class="lg:col-span-2 space-y-6">
+                <!-- TABS -->
+                <div class="flex border-b border-gray-800 gap-8 mb-4">
+                    <button onclick="showCaisseTab('participants')" id="tab-participants" class="pb-4 border-b-2 tab-active font-black text-xs tracking-widest uppercase transition">Participants</button>
+                    <button onclick="showCaisseTab('rotation')" id="tab-rotation" class="pb-4 border-b-2 border-transparent text-gray-500 hover:text-gray-300 font-black text-xs tracking-widest uppercase transition flex items-center gap-2">
+                        Rotation
+                    </button>
+                </div>
+
+                <div id="section-participants">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-black text-white uppercase tracking-tighter">Liste des Cotisants (<span id="part-count">0</span>)</h2>
+                        <button class="bg-gray-800 hover:bg-gray-700 text-cyan-400 px-4 py-2 rounded-xl text-xs font-black transition border border-gray-700">GÉRER LES PARTICIPANTS</button>
+                    </div>
+
+                    <div id="participant-list" class="space-y-3">
+                        <!-- Rempli par JS -->
+                    </div>
+                </div>
+
+                <div id="section-rotation" class="hidden">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-black text-white uppercase tracking-tighter">Ordre de passage</h2>
+                        <button onclick="shuffleOrder()" class="bg-gray-800 hover:bg-gray-700 text-orange-400 px-4 py-2 rounded-xl text-xs font-black transition border border-gray-700">TIRAGE AU SORT</button>
+                    </div>
+                    <div id="rotation-list" class="space-y-3">
+                        <!-- Rempli par JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- FAB ACTIONS (Comme sur Android) -->
+        <div class="fixed bottom-8 right-8 flex flex-col items-end gap-4">
+            <button onclick="window.location.href='/record-transaction?caisseId=' + caisseId" class="bg-cyan-500 hover:bg-cyan-400 text-gray-900 w-16 h-16 rounded-3xl shadow-2xl flex items-center justify-center transform hover:scale-110 active:scale-95 transition-all">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 4v16m8-8H4"></path></svg>
+            </button>
+        </div>
+
+    </div>
+
+    <script>
+        const caisseId = new URLSearchParams(window.location.search).get('id');
+        const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if (!caisseId) { window.location.href = '/profile'; return; }
+            if (!currentUser) { window.location.href = '/login'; return; }
+            fetchCaisseDetails();
+            fetchRotation();
+        });
+
+        function showCaisseTab(tab) {
+            const tabs = ['participants', 'rotation'];
+            tabs.forEach(t => {
+                document.getElementById(`tab-${t}`).classList.remove('tab-active');
+                document.getElementById(`tab-${t}`).classList.add('border-transparent', 'text-gray-500');
+                document.getElementById(`section-${t}`).classList.add('hidden');
+            });
+            document.getElementById(`tab-${tab}`).classList.add('tab-active');
+            document.getElementById(`tab-${tab}`).classList.remove('border-transparent', 'text-gray-500');
+            document.getElementById(`section-${tab}`).classList.remove('hidden');
+        }
+
+        async function fetchCaisseDetails() {
+            try {
+                const res = await fetch(`/caisses/${caisseId}?userId=${currentUser.id}`);
+                const caisse = await res.json();
+
+                if (caisse.error) {
+                    alert(caisse.error);
+                    window.location.href = '/search';
+                    return;
+                }
+
+                document.getElementById('caisse-name').innerText = caisse.libelle;
+                document.getElementById('caisse-badge').innerText = caisse.type.replace('_', ' ');
+
+                // Calculer le solde
+                let solde = 0;
+                if (caisse.transactions) {
+                    caisse.transactions.forEach(t => solde += parseInt(t.montant));
+                }
+                document.getElementById('caisse-balance').innerText = `${solde.toLocaleString()} F`;
+
+                if (caisse.cycles && caisse.cycles.length > 0) {
+                    document.getElementById('stat-cycle').innerText = `#${caisse.cycles[0].numeroCycle}`;
+                }
+
+                // Bénéficiaire actuel (Tour actuel)
+                const tourRes = await fetch(`/caisses/${caisseId}/tours/current`);
+                if (tourRes.ok) {
+                    const tour = await tourRes.json();
+                    if (tour && tour.beneficiary) {
+                        document.getElementById('next-ben').innerText = tour.beneficiary.nomSaisi;
+                    }
+                }
+
+                const list = document.getElementById('participant-list');
+                list.innerHTML = '';
+
+                // Note: Ici on simule car il faut un endpoint qui ramène les participants de la caisse
+                // Dans votre app Android, c'est fait via une requête complexe sur les membres de la tontine
+                // On va juste lister les membres de la tontine parente pour le moment
+                const tontineRes = await fetch(`/tontines/${caisse.tontineId}`);
+                const tontine = await tontineRes.json();
+
+                document.getElementById('part-count').innerText = tontine.members.length;
+                document.getElementById('stat-members').innerText = tontine.members.length;
+
+                tontine.members.forEach((m, index) => {
+                    const item = document.createElement('div');
+                    item.className = "bg-gray-800/40 border border-gray-700 p-5 rounded-[2rem] flex items-center gap-5 hover:border-cyan-500/30 transition shadow-lg cursor-pointer";
+                    item.onclick = () => window.location.href = `/record-transaction?caisseId=${caisseId}&memberId=${m.id}`;
+                    item.innerHTML = `
+                        <div class="w-12 h-12 bg-gray-700 rounded-full flex items-center justify-center font-black text-gray-400">${index + 1}</div>
+                        <div class="flex-1">
+                            <p class="font-black text-white uppercase text-sm leading-none mb-1">${m.nomSaisi}</p>
+                            <p class="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Ordre : ${index + 1}</p>
+                        </div>
+                        <div class="flex gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full bg-gray-600 shadow-[0_0_10px_rgba(75,85,99,0.5)]"></span>
+                        </div>
+                    `;
+                    list.appendChild(item);
+                });
+
+            } catch (e) { console.error(e); }
+        }
+
+        async function confirmCloseCycle() {
+            if (!confirm("Êtes-vous sûr de vouloir clôturer ce cycle ? Cela va générer un nouveau cycle vierge pour les prochaines cotisations.")) {
+                return;
+            }
+
+            try {
+                const res = await fetch(`/caisses/${caisseId}/close-cycle`, { method: 'POST' });
+                const result = await res.json();
+
+                if (res.ok) {
+                    alert(result.message);
+                    fetchCaisseDetails(); // Rafraîchir pour voir le nouveau cycle
+                } else {
+                    alert(result.error);
+                }
+            } catch (e) {
+                alert("Erreur de connexion au serveur");
+            }
+        }
+
+        async function fetchRotation() {
+            try {
+                const res = await fetch(`/caisses/${caisseId}/participants?userId=${currentUser.id}`);
+                const participants = await res.json();
+                const list = document.getElementById('rotation-list');
+                list.innerHTML = '';
+
+                participants.forEach((p, index) => {
+                    const item = document.createElement('div');
+                    item.className = "bg-gray-800/40 border border-gray-700 p-5 rounded-[2rem] flex items-center gap-5";
+                    item.innerHTML = `
+                        <div class="w-10 h-10 bg-gray-700 rounded-full flex items-center justify-center font-black text-xs text-gray-400">${index + 1}</div>
+                        <div class="flex-1">
+                            <p class="font-black text-white uppercase text-sm">${p.member.nomSaisi}</p>
+                        </div>
+                        <button onclick="setAsBeneficiary('${p.memberId}', ${index + 1})" class="bg-cyan-500/10 hover:bg-cyan-500 text-cyan-400 hover:text-gray-900 px-4 py-2 rounded-xl text-[10px] font-black transition border border-cyan-500/20 uppercase tracking-tighter">Bénéficiaire</button>
+                    `;
+                    list.appendChild(item);
+                });
+            } catch (e) { console.error(e); }
+        }
+
+        async function setAsBeneficiary(memberId, numTour) {
+            try {
+                const res = await fetch(`/caisses/${caisseId}/tours`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        beneficiaryId: memberId,
+                        numeroTour: numTour
+                    })
+                });
+                if (res.ok) {
+                    alert("Bénéficiaire défini pour ce tour !");
+                    fetchCaisseDetails();
+                }
+            } catch (e) { alert("Erreur"); }
+        }
+    </script>
+</body>
+</html>

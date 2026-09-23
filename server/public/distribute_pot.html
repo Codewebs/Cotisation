@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cotisation - Remise de la Cagnotte</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen p-4 md:p-8 flex items-center justify-center">
+    <div class="max-w-2xl w-full bg-gray-800 rounded-[2.5rem] shadow-2xl border border-gray-700 p-8 md:p-12">
+        <div class="mb-10 text-center">
+            <h1 class="text-3xl font-black text-emerald-400 uppercase tracking-tighter leading-none mb-2">Remise de Cagnotte</h1>
+            <p id="caisse-info" class="text-gray-500 text-xs font-bold uppercase tracking-widest">Distribution des fonds collectés</p>
+        </div>
+
+        <div class="space-y-8">
+            <!-- Infos Bénéficiaire -->
+            <div class="bg-emerald-500/10 p-8 rounded-[2rem] border border-emerald-500/20 text-center relative overflow-hidden">
+                <div class="relative z-10">
+                    <p class="text-[10px] text-emerald-500 font-black uppercase tracking-widest mb-2">Bénéficiaire du tour</p>
+                    <h2 id="beneficiary-name" class="text-3xl font-black text-white uppercase tracking-tight">Chargement...</h2>
+                    <p id="beneficiary-role" class="text-xs font-bold text-gray-500 mt-1 uppercase tracking-widest">Poste ----</p>
+                </div>
+                <svg class="absolute -right-4 -bottom-4 w-32 h-32 text-emerald-500/5 transform rotate-12" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM7 9a1 1 0 100-2 1 1 0 000 2zm7-1a1 1 0 11-2 0 1 1 0 012 0zm-.464 5.535a1 1 0 10-1.415-1.414 3 3 0 01-4.242 0 1 1 0 00-1.415 1.414 5 5 0 007.072 0z" clip-rule="evenodd"></path></svg>
+            </div>
+
+            <!-- Montant à distribuer -->
+            <div>
+                <label class="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-3 text-center">Montant total de la cagnotte (F)</label>
+                <div class="relative">
+                    <input id="montant" type="number" placeholder="0" class="w-full bg-gray-900 border border-gray-700 rounded-3xl px-5 py-6 text-4xl font-black text-white focus:ring-2 focus:ring-cyan-500 outline-none transition text-center shadow-inner">
+                    <p class="text-[9px] text-gray-500 text-center mt-2 font-bold uppercase tracking-widest italic">Calculé sur la base des cotisations reçues ce cycle</p>
+                </div>
+            </div>
+
+            <button onclick="confirmDistribution()" class="w-full mt-6 bg-cyan-500 hover:bg-cyan-600 text-gray-900 font-black py-5 rounded-3xl shadow-xl shadow-cyan-500/20 transform active:scale-95 transition uppercase tracking-tighter">
+                Confirmer la Distribution
+            </button>
+        </div>
+
+        <div id="msg-box" class="hidden mt-6 p-4 rounded-2xl text-sm text-center font-bold"></div>
+
+        <div class="mt-8 text-center">
+            <button onclick="history.back()" class="text-xs font-bold text-gray-600 hover:text-white transition uppercase tracking-widest">Annuler</button>
+        </div>
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const caisseId = urlParams.get('caisseId');
+        let beneficiaryId = null;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if (!caisseId) { window.location.href = '/profile'; return; }
+            fetchCaisseAndBeneficiary();
+        });
+
+        async function fetchCaisseAndBeneficiary() {
+            try {
+                // 1. Charger les détails de la caisse pour calculer la cagnotte
+                const res = await fetch(`/caisses/${caisseId}`);
+                const caisse = await res.json();
+                document.getElementById('caisse-info').innerText = `${caisse.libelle} • Distribution`;
+
+                // Calculer le total des cotisations du cycle actuel
+                let totalCagnotte = 0;
+                if (caisse.transactions) {
+                    caisse.transactions.forEach(t => {
+                        if (t.type === 'COTISATION') totalCagnotte += parseInt(t.montant);
+                    });
+                }
+                document.getElementById('montant').value = totalCagnotte;
+
+                // 2. Récupérer le bénéficiaire actuel
+                const tourRes = await fetch(`/caisses/${caisseId}/tours/current`);
+                if (tourRes.ok) {
+                    const tour = await tourRes.json();
+                    if (tour && tour.beneficiary) {
+                        beneficiaryId = tour.beneficiary.id;
+                        document.getElementById('beneficiary-name').innerText = tour.beneficiary.nomSaisi;
+                        document.getElementById('beneficiary-role').innerText = tour.beneficiary.role;
+                    } else {
+                        showMsg("Aucun bénéficiaire n'a été désigné pour ce tour.", false);
+                    }
+                } else {
+                    showMsg("Impossible de charger le bénéficiaire du tour.", false);
+                }
+
+            } catch (e) { console.error(e); }
+        }
+
+        async function confirmDistribution() {
+            if (!beneficiaryId) return alert("Aucun bénéficiaire à qui distribuer la cagnotte.");
+            const montant = document.getElementById('montant').value;
+            const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+
+            if (!montant || montant <= 0) return alert("Le montant de la cagnotte doit être supérieur à 0.");
+            if (!currentUser) return alert("Session expirée.");
+
+            try {
+                const res = await fetch(`/caisses/${caisseId}/distribute`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        montant: parseInt(montant),
+                        beneficiaryId: beneficiaryId,
+                        adminUserId: currentUser.id
+                    })
+                });
+
+                if (res.ok) {
+                    alert("Cagnotte distribuée avec succès ! Le tour est maintenant terminé.");
+                    window.location.href = `/caisse-details?id=${caisseId}`;
+                } else {
+                    const err = await res.json();
+                    alert(err.error);
+                }
+            } catch (e) { alert("Erreur réseau"); }
+        }
+
+        function showMsg(text, isSuccess) {
+            const msgBox = document.getElementById('msg-box');
+            msgBox.classList.remove('hidden', 'bg-red-900/50', 'text-red-400', 'bg-green-900/50', 'text-green-400');
+            msgBox.classList.add(isSuccess ? 'bg-green-900/50' : 'bg-red-900/50', isSuccess ? 'text-green-400' : 'text-red-400');
+            msgBox.innerText = text;
+            msgBox.classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>

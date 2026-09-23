@@ -34,8 +34,10 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -117,7 +119,8 @@ fun ActionButton(
 fun CaisseDetailCard(
     caisse: CaisseEntity,
     soldeGlobal: Long = 0L, 
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onDelete: (() -> Unit)? = null
 ) {
     val typeColor = when(caisse.type) {
         CaisseType.PRET -> Color(0xFF2196F3)        // Bleu
@@ -183,12 +186,27 @@ fun CaisseDetailCard(
 
                 // Affichage du montant fixe
                 Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        text = if (caisse.montantFixe != null) "${caisse.montantFixe}" else "Libre",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Black
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = if (caisse.montantFixe != null) "${caisse.montantFixe}" else "Libre",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Black
+                        )
+                        if (onDelete != null) {
+                            IconButton(
+                                onClick = { onDelete() },
+                                modifier = Modifier.size(32.dp).padding(start = 8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.DeleteSweep,
+                                    contentDescription = "Supprimer",
+                                    tint = Color.Red.copy(alpha = 0.6f),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
                     Text("FCFA", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
                 }
             }
@@ -197,8 +215,10 @@ fun CaisseDetailCard(
                 Spacer(Modifier.height(12.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Percent, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(14.dp))
+                    val taux = caisse.tauxInteret ?: 0.0
+                    val typeInt = caisse.typeInteret?.name ?: "SIMPLE"
                     Text(
-                        text = " Intérêt: ${caisse.tauxInteret}% (${caisse.typeInteret})",
+                        text = " Intérêt: $taux% ($typeInt)",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color(0xFF4CAF50)
                     )

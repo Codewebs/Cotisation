@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cotisation - Gestion des Amendes</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .glass { background: rgba(17, 24, 39, 0.85); backdrop-filter: blur(10px); }
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen p-4 md:p-8 font-sans">
+    <div class="max-w-6xl mx-auto">
+
+        <!-- HEADER -->
+        <header class="flex justify-between items-center mb-10">
+            <div class="flex items-center gap-4">
+                <button onclick="history.back()" class="p-3 bg-gray-800 rounded-2xl hover:bg-gray-700 transition border border-gray-700">
+                    <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                </button>
+                <div>
+                    <h1 class="text-3xl font-black tracking-tight text-white uppercase leading-none">Amendes & Pénalités</h1>
+                    <p class="text-emerald-500 font-mono text-xs font-bold mt-1 uppercase tracking-widest">Discipline & Recouvrement</p>
+                </div>
+            </div>
+        </header>
+
+        <!-- DASHBOARD -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+            <!-- Formulaire d'infliction -->
+            <div class="bg-gray-800 p-8 rounded-[2.5rem] border border-gray-700 shadow-xl glass">
+                <h2 class="text-lg font-black text-white uppercase mb-6 flex items-center gap-3">
+                    <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                    Infliger une sanction
+                </h2>
+
+                <div class="space-y-4">
+                    <select id="caisse-select" onchange="loadMembers()" class="w-full bg-gray-700 border border-gray-600 rounded-2xl px-5 py-3 text-sm font-bold text-white outline-none focus:ring-2 focus:ring-red-500 appearance-none transition">
+                        <option value="">-- SÉLECTIONNER LA CAISSE --</option>
+                    </select>
+
+                    <select id="member-select" class="w-full bg-gray-700 border border-gray-600 rounded-2xl px-5 py-3 text-sm font-bold text-white outline-none focus:ring-2 focus:ring-red-500 appearance-none transition">
+                        <option value="">-- CHOISIR LE MEMBRE --</option>
+                    </select>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <select id="type-select" class="bg-gray-700 border border-gray-600 rounded-2xl px-5 py-3 text-sm font-bold text-white outline-none">
+                            <option value="AMENDE">AMENDE</option>
+                            <option value="PENALITE">PÉNALITÉ</option>
+                        </select>
+                        <input id="montant" type="number" placeholder="MONTANT" class="bg-gray-900 border border-gray-700 rounded-2xl px-5 py-3 text-sm font-bold text-cyan-400 outline-none text-center">
+                    </div>
+
+                    <input id="motif" type="text" placeholder="MOTIF (Ex: Retard réunion)" class="w-full bg-gray-700 border border-gray-600 rounded-2xl px-5 py-3 text-sm font-bold focus:ring-1 focus:ring-red-500 outline-none transition">
+
+                    <button onclick="submitFine()" class="w-full bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-2xl shadow-lg shadow-red-900/20 transform active:scale-95 transition uppercase text-xs tracking-widest">
+                        Confirmer la sanction
+                    </button>
+                </div>
+            </div>
+
+            <!-- Liste des amendes en attente -->
+            <div class="space-y-4 overflow-y-auto max-h-[600px] pr-2">
+                <h2 class="text-xs font-black text-gray-500 uppercase tracking-widest mb-4">À recouvrer</h2>
+                <div id="fine-list" class="space-y-3">
+                    <!-- Rempli par JS -->
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const tontineId = urlParams.get('tontineId');
+        let tontineData = null;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if (!tontineId) { window.location.href = '/profile'; return; }
+            fetchInitialData();
+            fetchFines();
+        });
+
+        async function fetchInitialData() {
+            try {
+                const res = await fetch(`/tontines/${tontineId}`);
+                tontineData = await res.json();
+
+                const cSelect = document.getElementById('caisse-select');
+                tontineData.caisses.forEach(c => {
+                    const opt = document.createElement('option');
+                    opt.value = c.id;
+                    opt.innerText = c.libelle.toUpperCase();
+                    cSelect.appendChild(opt);
+                });
+            } catch (e) { console.error(e); }
+        }
+
+        function loadMembers() {
+            const mSelect = document.getElementById('member-select');
+            mSelect.innerHTML = '<option value="">-- CHOISIR LE MEMBRE --</option>';
+            tontineData.members.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m.id;
+                opt.innerText = m.nomSaisi.toUpperCase();
+                mSelect.appendChild(opt);
+            });
+        }
+
+        async function fetchFines() {
+            try {
+                const res = await fetch(`/tontines/${tontineId}/amendes`);
+                const amendes = await res.json();
+                const list = document.getElementById('fine-list');
+                list.innerHTML = '';
+
+                // Map des membres pour les noms
+                const membersMap = {};
+                tontineData.members.forEach(m => membersMap[m.id] = m.nomSaisi);
+
+                amendes.forEach(a => {
+                    const card = document.createElement('div');
+                    card.className = "bg-gray-800/60 border border-gray-700 p-5 rounded-3xl flex justify-between items-center gap-4 hover:border-red-500/30 transition shadow-lg";
+                    card.innerHTML = `
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="text-[9px] font-black bg-red-900/30 text-red-400 px-2 py-0.5 rounded border border-red-500/20">${a.type}</span>
+                                <h4 class="text-sm font-black text-white uppercase">${membersMap[a.memberId] || 'INCONNU'}</h4>
+                            </div>
+                            <p class="text-[10px] text-gray-500 font-bold italic">${a.motif}</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-lg font-black text-white">${parseInt(a.montant).toLocaleString()} F</p>
+                            <button onclick="payFine('${a.id}')" class="mt-2 bg-emerald-500 hover:bg-emerald-600 text-gray-900 px-3 py-1 rounded-lg text-[9px] font-black transition">PAYER</button>
+                        </div>
+                    `;
+                    list.appendChild(card);
+                });
+            } catch (e) { console.error(e); }
+        }
+
+        async function submitFine() {
+            const caisseId = document.getElementById('caisse-select').value;
+            const memberId = document.getElementById('member-select').value;
+            const type = document.getElementById('type-select').value;
+            const montant = document.getElementById('montant').value;
+            const motif = document.getElementById('motif').value;
+
+            if (!caisseId || !memberId || !montant || !motif) return alert("Tous les champs sont requis.");
+
+            // Trouver le cycle actif
+            const caisse = tontineData.caisses.find(c => c.id === caisseId);
+            // Pour simplifier, on fetch le cycle actif via l'API caisse
+            const cRes = await fetch(`/caisses/${caisseId}`);
+            const cData = await cRes.json();
+            const cycleId = cData.cycles && cData.cycles.length > 0 ? cData.cycles[0].id : null;
+
+            if (!cycleId) return alert("Aucun cycle actif pour cette caisse.");
+
+            try {
+                const res = await fetch('/amendes', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ caisseId, memberId, cycleId, montant: parseInt(montant), motif, type })
+                });
+                if (res.ok) {
+                    alert("Sanction enregistrée !");
+                    fetchFines();
+                }
+            } catch (e) { alert("Erreur"); }
+        }
+
+        async function payFine(id) {
+            const user = JSON.parse(localStorage.getItem('currentUser'));
+            try {
+                const res = await fetch(`/amendes/${id}/pay`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ validatedById: user.id })
+                });
+                if (res.ok) {
+                    alert("Recouvrement effectué !");
+                    fetchFines();
+                }
+            } catch (e) { alert("Erreur réseau"); }
+        }
+    </script>
+</body>
+</html>

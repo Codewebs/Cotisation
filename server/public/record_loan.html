@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cotisation - Accorder un Prêt</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen p-4 md:p-8 flex items-center justify-center">
+    <div class="max-w-3xl w-full bg-gray-800 rounded-[2.5rem] shadow-2xl border border-gray-700 p-8 md:p-12">
+
+        <div class="mb-10 text-center">
+            <h1 class="text-3xl font-black text-cyan-400 uppercase tracking-tighter leading-none mb-2">Accorder un Prêt</h1>
+            <p id="caisse-info" class="text-gray-500 text-xs font-bold uppercase tracking-widest">Configuration de l'emprunt</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <!-- Emprunteur -->
+            <div class="space-y-6">
+                <div>
+                    <label class="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-3">Bénéficiaire</label>
+                    <select id="member-select" class="w-full bg-gray-700 border border-gray-600 rounded-2xl px-5 py-4 text-sm font-bold text-white focus:ring-2 focus:ring-cyan-500 outline-none appearance-none transition">
+                        <option value="">-- MEMBRE DE LA TONTINE --</option>
+                    </select>
+                </div>
+
+                <div class="relative py-4">
+                    <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-gray-700"></div></div>
+                    <div class="relative flex justify-center text-[10px] font-black uppercase text-gray-600"><span class="bg-gray-800 px-3 italic">ou Emprunteur Externe</span></div>
+                </div>
+
+                <div>
+                    <input id="nom-externe" type="text" placeholder="NOM COMPLET" class="w-full bg-gray-700/50 border border-gray-700 rounded-2xl px-5 py-3 text-sm font-bold focus:ring-1 focus:ring-cyan-500 outline-none transition mb-3">
+                    <input id="cni-externe" type="text" placeholder="N° CNI" class="w-full bg-gray-700/50 border border-gray-700 rounded-2xl px-5 py-3 text-sm font-bold focus:ring-1 focus:ring-cyan-500 outline-none transition">
+                </div>
+            </div>
+
+            <!-- Paramètres Financiers -->
+            <div class="space-y-6">
+                <div>
+                    <label class="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-3">Montant Principal (F)</label>
+                    <input id="montant" type="number" placeholder="0" class="w-full bg-gray-900 border border-gray-700 rounded-2xl px-5 py-4 text-xl font-black text-cyan-400 focus:ring-2 focus:ring-cyan-500 outline-none transition text-center">
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">Taux (%)</label>
+                        <input id="taux" type="number" value="5" class="w-full bg-gray-700 border border-gray-600 rounded-2xl px-5 py-3 text-sm font-bold focus:ring-2 focus:ring-cyan-500 outline-none transition">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">Durée (Mois)</label>
+                        <input id="duree" type="number" value="1" class="w-full bg-gray-700 border border-gray-600 rounded-2xl px-5 py-3 text-sm font-bold focus:ring-2 focus:ring-cyan-500 outline-none transition">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-3">Date d'échéance</label>
+                    <input id="echeance" type="date" class="w-full bg-gray-700 border border-gray-600 rounded-2xl px-5 py-3 text-sm font-bold focus:ring-2 focus:ring-cyan-500 outline-none transition">
+                </div>
+            </div>
+        </div>
+
+        <button onclick="submitLoan()" class="w-full mt-12 bg-cyan-500 hover:bg-cyan-600 text-gray-900 font-black py-5 rounded-3xl shadow-xl shadow-cyan-500/20 transform active:scale-95 transition uppercase tracking-tighter">
+            Enregistrer la demande
+        </button>
+
+        <div class="mt-8 text-center">
+            <button onclick="history.back()" class="text-xs font-bold text-gray-600 hover:text-white transition uppercase">Annuler</button>
+        </div>
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const caisseId = urlParams.get('caisseId');
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if (!caisseId) { window.location.href = '/profile'; return; }
+            fetchCaisseInfo();
+        });
+
+        async function fetchCaisseInfo() {
+            try {
+                const res = await fetch(`/caisses/${caisseId}`);
+                const caisse = await res.json();
+                document.getElementById('caisse-info').innerText = `CAISSE : ${caisse.libelle}`;
+                if (caisse.tauxInteret) document.getElementById('taux').value = caisse.tauxInteret;
+
+                const tRes = await fetch(`/tontines/${caisse.tontineId}`);
+                const tontine = await tRes.json();
+                const select = document.getElementById('member-select');
+                tontine.members.forEach(m => {
+                    const opt = document.createElement('option');
+                    opt.value = m.id;
+                    opt.innerText = m.nomSaisi.toUpperCase();
+                    select.appendChild(opt);
+                });
+            } catch (e) { console.error(e); }
+        }
+
+        async function submitLoan() {
+            const memberId = document.getElementById('member-select').value;
+            const nomEx = document.getElementById('nom-externe').value;
+            const cniEx = document.getElementById('cni-externe').value;
+            const montant = document.getElementById('montant').value;
+            const taux = document.getElementById('taux').value;
+            const echeance = document.getElementById('echeance').value;
+
+            if (!memberId && !nomEx) return alert("Veuillez sélectionner un membre ou saisir un emprunteur externe.");
+            if (!montant || montant <= 0) return alert("Montant invalide.");
+            if (!echeance) return alert("Date d'échéance requise.");
+
+            const data = {
+                caisseId,
+                memberId: memberId || null,
+                nomEmprunteurExterne: nomEx || null,
+                cniEmprunteurExterne: cniEx || null,
+                montantPrincipal: parseInt(montant),
+                montantInterets: Math.floor(parseInt(montant) * (parseFloat(taux)/100)),
+                tauxInteret: parseFloat(taux),
+                dateEcheance: new Date(echeance).getTime(),
+                typeInteret: 'SIMPLE'
+            };
+
+            try {
+                const res = await fetch('/prets', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                if (res.ok) {
+                    alert("Demande de prêt enregistrée !");
+                    history.back();
+                } else {
+                    const err = await res.json();
+                    alert(err.error);
+                }
+            } catch (e) { alert("Erreur serveur"); }
+        }
+    </script>
+</body>
+</html>

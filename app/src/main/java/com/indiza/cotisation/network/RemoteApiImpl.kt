@@ -35,6 +35,10 @@ class RemoteApiImpl(
         tontineApi.deleteTontine(remoteId)
     }
 
+    override suspend fun getMyTontines(userId: String): List<com.indiza.cotisation.tontine.TontineApiDto> {
+        return tontineApi.getMyTontines(userId)
+    }
+
     override suspend fun createCaisse(caisse: CaisseSyncDto): String {
         val response = caisseApi.createCaisse(caisse.toApiDto())
         return response.id!!
@@ -76,5 +80,45 @@ class RemoteApiImpl(
     }
     override suspend fun getCurrentUser(): UserResponse {
         return networkUserApi.getCurrentUser()
+    }
+
+    override suspend fun getInvitationDetails(code: String): com.indiza.cotisation.invitations.InvitationResponse {
+        return tontineApi.getInvitationDetails(code)
+    }
+
+    override suspend fun joinTontine(code: String, userId: String) {
+        tontineApi.joinTontine(code, com.indiza.cotisation.invitations.JoinRequestDto(userId))
+    }
+
+    override suspend fun generateInviteLink(tontineId: String, senderId: String): String {
+        return tontineApi.generateInvite(tontineId, com.indiza.cotisation.invitations.InviteGenerationRequest(senderId)).code
+    }
+
+    override suspend fun getJoinRequests(tontineId: String): List<com.indiza.cotisation.invitations.JoinRequestResponse> {
+        return tontineApi.getJoinRequests(tontineId)
+    }
+
+    override suspend fun approveJoinRequest(requestId: String, adminUserId: String, targetMemberId: Long, updateInfo: Boolean) {
+        tontineApi.approveRequest(requestId, com.indiza.cotisation.invitations.ApprovalRequest(adminUserId, targetMemberId, updateInfo))
+    }
+
+    override suspend fun getUserNotifications(userId: String): List<com.indiza.cotisation.users.NotificationResponse> {
+        return tontineApi.getNotifications(userId)
+    }
+
+    override suspend fun markNotificationAsRead(notificationId: String) {
+        tontineApi.markAsRead(notificationId)
+    }
+
+    override suspend fun getTransactionDetails(transactionId: String): com.indiza.cotisation.tontine.TransactionApiDto {
+        return tontineApi.getTransaction(transactionId)
+    }
+
+    override suspend fun getAdminSignatureStats(userId: String): com.indiza.cotisation.users.AdminSignatureStats {
+        return tontineApi.getAdminSignatureStats(userId)
+    }
+
+    override suspend fun broadcastReport(tontineId: String, senderId: String) {
+        tontineApi.broadcastReport(tontineId, mapOf("senderId" to senderId))
     }
 }

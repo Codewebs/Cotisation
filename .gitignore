@@ -36,3 +36,10 @@ local.properties
 # OS specific
 .DS_Store
 Thumbs.db
+
+# Server / Backend
+server/node_modules/
+server/.env
+server/*.sqlite
+server/database.sqlite
+server/npm-debug.log*

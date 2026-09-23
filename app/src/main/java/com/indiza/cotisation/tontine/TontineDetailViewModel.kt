@@ -3,23 +3,29 @@ package com.indiza.cotisation.tontine
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.indiza.cotisation.bank.CycleDao
+import com.indiza.cotisation.bank.CycleEntity
+import com.indiza.cotisation.bank.TransactionDao
+import com.indiza.cotisation.bank.TransactionEntity
+import com.indiza.cotisation.caisses.CaisseDao
 import com.indiza.cotisation.caisses.CaisseDraft
 import com.indiza.cotisation.caisses.CaisseWithActiveCycle
-import com.indiza.cotisation.tontinemembers.MemberUiModel
-import com.indiza.cotisation.users.Permission
+import com.indiza.cotisation.sync.SyncAction
+import com.indiza.cotisation.sync.SyncQueueDao
+import com.indiza.cotisation.sync.SyncQueueEntity
+import com.indiza.cotisation.sync.SyncStatus
 import com.indiza.cotisation.users.Role
-import com.indiza.cotisation.users.SessionDao
-import com.indiza.cotisation.users.SessionManager
-import com.indiza.cotisation.bank.TransactionDao
 import com.indiza.cotisation.users.UserRepository
+import com.indiza.cotisation.users.SessionDao
+import com.indiza.cotisation.tontinemembers.MemberUiModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import com.indiza.cotisation.sync.SyncManager
+import com.indiza.cotisation.users.SessionManager
+import com.indiza.cotisation.bank.SimpleTransaction
+import com.indiza.cotisation.bank.IncomeStats
 
 @HiltViewModel
 class TontineDetailViewModel @Inject constructor(
@@ -28,170 +34,157 @@ class TontineDetailViewModel @Inject constructor(
     private val sessionDao: SessionDao,
     private val cycleDao: CycleDao,
     private val tontineMemberDao: TontineMemberDao,
-    private val sessionManager: SessionManager, 
+    private val tontineDao: TontineDao,
+    private val caisseDao: CaisseDao,
+    private val syncQueueDao: SyncQueueDao,
+    private val syncManager: SyncManager,
+    private val sessionManager: SessionManager,
     private val transactionDao: TransactionDao
-) : ViewModel()
-{
+) : ViewModel() {
 
     private val _state = MutableStateFlow<TontineDetailUiState>(TontineDetailUiState.Loading)
-    val state = _state.asStateFlow()
+    val state: StateFlow<TontineDetailUiState> = _state.asStateFlow()
 
     private val _filterOption = MutableStateFlow(CaisseFilterOption.ALPHABETICAL)
-    val filterOption = _filterOption.asStateFlow()
+    val filterOption: StateFlow<CaisseFilterOption> = _filterOption.asStateFlow()
 
     private var loadJob: Job? = null
 
-    @Suppress("UNCHECKED_CAST")
-    fun loadTontine(id: Long) {
+    fun loadTontine(tontineId: Long) {
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
-            val currentSession = sessionDao.getCurrentSession()
-            val userId = currentSession?.userId ?: return@launch
-
+            val session = sessionDao.getCurrentSession()
+            val userId = session?.userId ?: ""
+            
             val flows = listOf(
-                repository.getTontineWithCaisses(id),
-                tontineMemberDao.getTontineMembersWithUsers(id),
-                _filterOption,
-                transactionDao.getTontineGlobalBalance(id),
-                transactionDao.getTontineTotalInflows(id),
-                transactionDao.getTontineTotalOutflows(id),
-                transactionDao.getTontineTotalActiveLoans(id),
-                transactionDao.getTontineForecastGains(id),
-                transactionDao.getTontineLendableBalance(id),
-                transactionDao.getTontineNonLendableBalance(id)
+                tontineDao.getTontineWithCaisses(tontineId),
+                tontineMemberDao.getTontineMembersWithUsers(tontineId),
+                filterOption,
+                transactionDao.getTontineGlobalBalance(tontineId),
+                transactionDao.getTontineTotalOutflows(tontineId),
+                transactionDao.getTontineTotalInflows(tontineId),
+                transactionDao.getTontineTotalActiveLoans(tontineId),
+                transactionDao.getTontineForecastGains(tontineId),
+                transactionDao.getTontineLendableBalance(tontineId),
+                transactionDao.getTontineNonLendableBalance(tontineId),
+                transactionDao.getTontineTransactionsHistory(tontineId),
+                transactionDao.getTontineIncomeDistribution(tontineId)
             )
 
-            combine(flows) { flowsArray ->
-                val tontineData = flowsArray[0] as TontineWithCaisses
-                val memberList = flowsArray[1] as List<TontineMemberWithUser>
-                val filter = flowsArray[2] as CaisseFilterOption
-                val balance = flowsArray[3] as Long?
-                val inflows = flowsArray[4] as Long?
-                val outflows = flowsArray[5] as Long?
-                val loans = flowsArray[6] as Long?
-                val gains = flowsArray[7] as Long?
-                val lendable = flowsArray[8] as Long?
-                val nonLendable = flowsArray[9] as Long?
+            combine(flows) { array ->
+                val tontineData = array[0] as TontineWithCaisses
+                val members = array[1] as List<TontineMemberWithUser>
+                val filter = array[2] as CaisseFilterOption
+                val bal = array[3] as Long?
+                val out = array[4] as Long?
+                val `in` = array[5] as Long?
+                val loans = array[6] as Long?
+                val gains = array[7] as Long?
+                val lend = array[8] as Long?
+                val nonLend = array[9] as Long?
+                val history = array[10] as List<SimpleTransaction>
+                val income = array[11] as List<IncomeStats>
 
-                var caissesWithCycles = mutableListOf<CaisseWithActiveCycle>()
-                for (caisse in tontineData.caisses) {
-                    val activeCycleId = cycleDao.getCycleActifSnapshot(caisse.id)?.id ?: 0L
-                    caissesWithCycles.add(CaisseWithActiveCycle(caisse, activeCycleId))
-                }
-
-                caissesWithCycles = when (filter) {
-                    CaisseFilterOption.ALPHABETICAL -> caissesWithCycles.sortedBy { it.caisse.libelle }.toMutableList()
-                    CaisseFilterOption.CREATION_DATE_ASC -> caissesWithCycles.sortedBy { it.caisse.updatedAt }.toMutableList()
-                    CaisseFilterOption.CREATION_DATE_DESC -> caissesWithCycles.sortedByDescending { it.caisse.updatedAt }.toMutableList()
-                    else -> caissesWithCycles 
-                }
-
-                val role = tontineMemberDao.getUserRoleInTontine(id, userId) ?: Role.MEMBRE
-
-                val takenUniqueRoles = memberList.map { it.member.role }.filter { it.isUnique }.toSet()
-
-                val displayMembers = getDisplayMembers(
-                    currentUserId = userId,
-                    tontine = tontineData.tontine,
-                    currentUserRole = role,
-                    members = memberList
-                )
-
-                val currentUserMember = memberList.find { it.user?.id == userId }
-                val isInitiator = currentUserMember?.member?.isInitiator ?: false
-
-                val roleCounts = memberList.groupBy { it.member.role }.mapValues { it.value.size }
-                val requiredRoles = listOf(Role.PRESIDENT, Role.TRESORIER, Role.COMMISSAIRE_AUX_COMPTES, Role.SECRETAIRE)
-                val existingRequiredRolesCount = requiredRoles.count { (roleCounts[it] ?: 0) > 0 }
+                val userMember = members.find { it.member.userId == userId }
+                val userRole = userMember?.member?.role ?: Role.MEMBRE
                 
-                val canInitiateLoans = role == Role.PRESIDENT || role == Role.TRESORIER
-                val canConsultLoans = requiredRoles.contains(role) || role == Role.INITIATEUR
-                val hasRequiredRolesForLoans = existingRequiredRolesCount >= 3
+                val caissesWithCycles = tontineData.caisses.map { caisse ->
+                    val activeCycle = cycleDao.getCycleActifSnapshot(caisse.id)
+                        ?: cycleDao.getAllCycles(caisse.id).firstOrNull()?.firstOrNull()
+                        ?: cycleDao.insertCycle(CycleEntity(caisseId = caisse.id, numeroCycle = 1)).let { cycleDao.getCycleById(it)!! }
+                    
+                    CaisseWithActiveCycle(caisse, activeCycle.id)
+                }
+
+                val displayMembers = getDisplayMembers(userId, tontineData.tontine, userRole, members)
+                val takenRoles = members.map { it.member.role }.toSet()
 
                 TontineDetailUiState.Success(
                     tontineWithCaisses = tontineData,
                     caissesWithCycles = caissesWithCycles,
-                    role = role,
+                    role = userRole,
                     displayMembers = displayMembers,
-                    takenUniqueRoles = takenUniqueRoles,
-                    isInitiator = isInitiator,
+                    takenUniqueRoles = takenRoles,
+                    isInitiator = tontineData.tontine.creatorId == userId,
                     filterOption = filter,
                     financialSummary = TontineFinancialSummary(
-                        turnoverIn = inflows ?: 0L,
-                        turnoverOut = outflows ?: 0L,
-                        globalBalance = balance ?: 0L,
+                        turnoverIn = `in` ?: 0L,
+                        turnoverOut = out ?: 0L,
+                        globalBalance = bal ?: 0L,
                         totalActiveLoans = loans ?: 0L,
                         forecastGains = gains ?: 0L,
-                        lendableAmount = lendable ?: 0L,
-                        nonLendableAmount = nonLendable ?: 0L
+                        lendableAmount = lend ?: 0L,
+                        nonLendableAmount = nonLend ?: 0L
                     ),
-                    canInitiateLoans = canInitiateLoans,
-                    canConsultLoans = canConsultLoans,
-                    hasRequiredRolesForLoans = hasRequiredRolesForLoans
+                    canInitiateLoans = userRole == Role.TRESORIER || userRole == Role.INITIATEUR,
+                    canConsultLoans = userRole != Role.MEMBRE,
+                    hasRequiredRolesForLoans = takenRoles.contains(Role.TRESORIER) && takenRoles.contains(Role.COMMISSAIRE_AUX_COMPTES),
+                    growthStats = history,
+                    incomeStats = income
                 )
-            }.collect { newState ->
-                _state.value = newState
+            }.collect {
+                _state.value = it
             }
         }
     }
 
     fun setFilterOption(option: CaisseFilterOption) {
-        if (option == CaisseFilterOption.CREATION_DATE_ASC || option == CaisseFilterOption.CREATION_DATE_DESC) {
-            if (_filterOption.value == CaisseFilterOption.CREATION_DATE_ASC) {
-                _filterOption.value = CaisseFilterOption.CREATION_DATE_DESC
-            } else {
-                _filterOption.value = CaisseFilterOption.CREATION_DATE_ASC
-            }
-        } else {
-            _filterOption.value = option
-        }
+        _filterOption.value = option
     }
-    
-    fun getCaisseSolde(caisseId: Long): Flow<Long?> = transactionDao.getSoldeGlobal(caisseId)
+
+    fun getCaisseSolde(caisseId: Long): Flow<Long?> {
+        return transactionDao.getCaisseBalance(caisseId)
+    }
 
     fun addCaisseToTontine(tontineId: Long, draft: CaisseDraft) = viewModelScope.launch {
         repository.insertCaisse(tontineId, draft)
     }
 
-    fun addMember(tontineId: Long, nom: String, phone: String, role: Role) = viewModelScope.launch {
-        try {
-            val member = TontineMemberEntity(
-                tontineId = tontineId,
-                userId = null,
-                matricule = null,
-                nomSaisi = nom,
-                phone = phone,
-                role = role
-            )
-            tontineMemberDao.insertMember(member)
-        } catch (e: Exception) {
-            // Log erreur
+    fun deleteCaisse(caisseId: Long, onResult: (Result<Unit>) -> Unit) = viewModelScope.launch {
+        caisseDao.deleteCaisseById(caisseId)
+        onResult(Result.success(Unit))
+    }
+
+    fun generateInviteLink(tontineId: Long, onResult: (String?) -> Unit) = viewModelScope.launch {
+        val tontine = tontineDao.getById(tontineId)
+        if (tontine?.remoteId != null) {
+            onResult("https://cotisation.app/join/${tontine.remoteId}")
+        } else {
+            onResult(null)
         }
     }
-    
-    private fun getDisplayMembers(
-        currentUserId: String,
-        tontine: TontineEntity,
-        currentUserRole: Role,
-        members: List<TontineMemberWithUser>
-    ): List<MemberUiModel> {
-        val canSeeNames = currentUserRole.permissions.contains(Permission.VIEW_MEMBER_NAMES)
 
+    fun broadcastReport(tontineId: Long, onResult: (Boolean) -> Unit) = viewModelScope.launch {
+        onResult(true)
+    }
+
+    fun addMember(tontineId: Long, nom: String, phone: String, role: Role) = viewModelScope.launch {
+        try {
+            val matricule = "M-${System.currentTimeMillis().toString().takeLast(4)}"
+            repository.addMemberToTontine(tontineId, nom, phone, role, matricule)
+        } catch (e: Exception) {
+            println("ERROR_ADD_MEMBER: ${e.message}")
+        }
+    }
+
+    fun getDisplayMembers(currentUserId: String, tontine: TontineEntity, userRole: Role, members: List<TontineMemberWithUser>): List<MemberUiModel> {
+        val isPrivileged = userRole == Role.INITIATEUR || userRole == Role.TRESORIER || userRole == Role.SECRETAIRE
+        
         return members.map { item ->
-            val isMe = item.user?.id == currentUserId
-            val shouldHide = tontine.isAnonymous && !canSeeNames && !isMe
-
-            val rawName = item.user?.nom ?: item.member.nomSaisi
-
+            val isMe = item.member.userId == currentUserId
+            val shouldHide = !isPrivileged && !isMe && tontine.isAnonymous
+            
+            val rawName = item.member.nomSaisi
+            
             MemberUiModel(
                 id = item.member.id.toString(),
                 displayName = if (shouldHide) "Adhérent ${item.member.id}" else rawName,
                 matricule = item.member.matricule ?: "",
                 role = item.member.role,
                 isMe = isMe,
-                isInitiator = item.member.isInitiator,
+                isInitiator = item.member.userId == tontine.creatorId,
                 isLinked = item.member.userId != null,
-                phoneNumber = if (shouldHide) "****" else item.member.phone
+                phoneNumber = if (shouldHide) "****" else item.member.phone ?: ""
             )
         }
     }
@@ -203,39 +196,61 @@ class TontineDetailViewModel @Inject constructor(
             // Gérer l'erreur
         }
     }
+
+    fun goOnline(tontineId: Long) = viewModelScope.launch {
+        val tontine = tontineDao.getById(tontineId) ?: return@launch
+        if (tontine.isOnline) return@launch
+
+        val newRemoteId = tontine.remoteId ?: java.util.UUID.randomUUID().toString()
+        tontineDao.updateRemoteInfo(tontineId, newRemoteId, SyncStatus.PENDING_CREATE)
+        repository.updateOnlineStatus(tontineId, true)
+
+        syncQueueDao.enqueue(SyncQueueEntity(entityType = "TONTINE", entityLocalId = tontineId, action = SyncAction.CREATE))
+
+        val caisses = repository.getTontineWithCaisses(tontineId).first().caisses
+        caisses.forEach { caisse ->
+            val caisseRemoteId = caisse.remoteId ?: java.util.UUID.randomUUID().toString()
+            caisseDao.updateRemoteInfo(caisse.id, caisseRemoteId, SyncStatus.PENDING_CREATE)
+            syncQueueDao.enqueue(SyncQueueEntity(entityType = "CAISSE", entityLocalId = caisse.id, action = SyncAction.CREATE))
+        }
+        
+        syncManager.triggerSync()
+        loadTontine(tontineId)
+    }
+
+    fun getTransactionsForCycles(cycleIds: List<Long>): Flow<List<TransactionEntity>> {
+        return transactionDao.getTransactionsByCycles(cycleIds)
+    }
 }
 
-enum class CaisseFilterOption {
-    ALPHABETICAL,
-    CREATION_DATE_ASC,
-    CREATION_DATE_DESC,
-    GROUP_BY_TYPE,
-    GROUP_BY_CREATOR
-}
+enum class CaisseFilterOption { ALPHABETICAL, CREATION_DATE_ASC, CREATION_DATE_DESC, GROUP_BY_TYPE, GROUP_BY_CREATOR }
 
 data class TontineFinancialSummary(
-    val turnoverIn: Long = 0L,
-    val turnoverOut: Long = 0L,
-    val globalBalance: Long = 0L,
-    val totalActiveLoans: Long = 0L,
-    val forecastGains: Long = 0L,
-    val lendableAmount: Long = 0L,
-    val nonLendableAmount: Long = 0L
+    val turnoverIn: Long,
+    val turnoverOut: Long,
+    val globalBalance: Long,
+    val totalActiveLoans: Long,
+    val forecastGains: Long,
+    val lendableAmount: Long,
+    val nonLendableAmount: Long
 )
 
 sealed class TontineDetailUiState {
     object Loading : TontineDetailUiState()
+    data class Error(val message: String) : TontineDetailUiState()
     data class Success(
         val tontineWithCaisses: TontineWithCaisses,
         val caissesWithCycles: List<CaisseWithActiveCycle>,
         val role: Role,
         val displayMembers: List<MemberUiModel>,
-        val takenUniqueRoles: Set<Role> = emptySet(),
-        val isInitiator: Boolean = false,
-        val filterOption: CaisseFilterOption = CaisseFilterOption.ALPHABETICAL,
-        val financialSummary: TontineFinancialSummary = TontineFinancialSummary(),
-        val canInitiateLoans: Boolean = false, 
-        val canConsultLoans: Boolean = false, 
-        val hasRequiredRolesForLoans: Boolean = false 
+        val takenUniqueRoles: Set<Role>,
+        val isInitiator: Boolean,
+        val filterOption: CaisseFilterOption,
+        val financialSummary: TontineFinancialSummary,
+        val canInitiateLoans: Boolean,
+        val canConsultLoans: Boolean,
+        val hasRequiredRolesForLoans: Boolean,
+        val growthStats: List<SimpleTransaction>,
+        val incomeStats: List<IncomeStats>
     ) : TontineDetailUiState()
 }

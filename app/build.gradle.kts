@@ -73,7 +73,8 @@ dependencies {
     // Hilt
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
-    implementation(libs.hilt.work)
+    implementation("androidx.hilt:hilt-work:1.2.0")
+    ksp("androidx.hilt:hilt-compiler:1.2.0")
     implementation(libs.androidx.hilt.navigation.compose)
 
     // Room
@@ -96,6 +97,8 @@ dependencies {
     implementation(libs.okhttp.logging)
     implementation(libs.moshi.core)
     implementation(libs.moshi.kotlin)
+
+    implementation(libs.coil.compose)
 
     implementation(libs.work.runtime)
 
