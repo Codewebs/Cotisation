@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cotisation - Détails de la Caisse</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+    <script src="/js/supabase-config.js"></script>
+    <script src="/js/supabase-client.js"></script>
+    <script src="/js/realtime.js"></script>
     <style>
         .neon-border { border: 1px solid rgba(34, 211, 238, 0.2); }
         .glass { background: rgba(31, 41, 55, 0.8); backdrop-filter: blur(8px); }
@@ -52,7 +56,12 @@
                     <p class="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Solde Actuel</p>
                     <p id="caisse-balance" class="text-4xl font-black text-white">0 F</p>
 
-                    <div class="mt-8 pt-6 border-t border-gray-700 grid grid-cols-2 gap-4">
+                    <div class="mt-4 pt-4 border-t border-gray-700">
+                        <p class="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Frais de Caisse (Disponibles)</p>
+                        <p id="frais-balance" class="text-xl font-black text-cyan-400">0 F</p>
+                    </div>
+
+                    <div class="mt-6 pt-6 border-t border-gray-700 grid grid-cols-2 gap-4">
                         <div>
                             <p class="text-[9px] font-bold text-gray-500 uppercase tracking-tighter">Membres</p>
                             <p id="stat-members" class="text-lg font-black text-cyan-400">0</p>
@@ -63,11 +72,11 @@
                         </div>
                     </div>
 
-                    <!-- ADMIN ACTIONS -->
-                    <div class="mt-8">
-                        <button onclick="confirmCloseCycle()" class="w-full bg-red-600/20 hover:bg-red-600 text-red-500 hover:text-white border border-red-500/30 rounded-2xl py-3 text-[10px] font-black uppercase tracking-widest transition duration-300">
-                            Clôturer le Cycle
-                        </button>
+                    <!-- CYCLE SELECTOR -->
+                    <div class="mt-6">
+                        <label class="block text-[9px] font-black text-gray-500 uppercase tracking-widest mb-1">Sélectionner un Cycle</label>
+                        <select id="cycle-select" onchange="onCycleChange(this.value)" class="w-full bg-gray-700 border border-gray-600 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none focus:ring-2 focus:ring-cyan-500">
+                        </select>
                     </div>
                 </div>
 
@@ -81,6 +90,11 @@
             </div>
 
             <div class="lg:col-span-2 space-y-6">
+                <!-- CYCLE ACTIONS -->
+                <div id="cycle-actions" class="mb-6">
+                    <!-- Rempli par JS -->
+                </div>
+
                 <!-- TABS -->
                 <div class="flex border-b border-gray-800 gap-8 mb-4">
                     <button onclick="showCaisseTab('participants')" id="tab-participants" class="pb-4 border-b-2 tab-active font-black text-xs tracking-widest uppercase transition">Participants</button>
@@ -123,10 +137,12 @@
 
     <script>
         const caisseId = new URLSearchParams(window.location.search).get('id');
-        const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+        let currentUser = null;
+        let currentCycleId = null;
 
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
             if (!caisseId) { window.location.href = '/profile'; return; }
+            currentUser = await getCurrentUser().catch(() => null);
             if (!currentUser) { window.location.href = '/login'; return; }
             fetchCaisseDetails();
             fetchRotation();
@@ -144,60 +160,79 @@
             document.getElementById(`section-${tab}`).classList.remove('hidden');
         }
 
+        let allCycles = [];
+        let selectedCycleId = null;
+        let isTontineAdmin = false;
+
         async function fetchCaisseDetails() {
             try {
-                const res = await fetch(`/caisses/${caisseId}?userId=${currentUser.id}`);
-                const caisse = await res.json();
-
-                if (caisse.error) {
-                    alert(caisse.error);
-                    window.location.href = '/search';
-                    return;
-                }
+                const { data: caisse, error } = await db.from('caisses')
+                    .select('*,cycles(id,numero_cycle,est_cloture),transactions(montant,type)')
+                    .eq('id', caisseId).single();
+                if (error) throw error;
 
                 document.getElementById('caisse-name').innerText = caisse.libelle;
-                document.getElementById('caisse-badge').innerText = caisse.type.replace('_', ' ');
+                document.getElementById('caisse-badge').innerText = (caisse.type || '').replace('_', ' ');
 
-                // Calculer le solde
+                // Check admin status (tontine initiator or president)
+                const [tontineRes, memberRes] = await Promise.all([
+                    db.from('tontines').select('admin_id').eq('id', caisse.tontine_id).single(),
+                    db.from('members').select('role').eq('tontine_id', caisse.tontine_id).eq('user_id', currentUser.id).maybeSingle()
+                ]);
+                const tontine = tontineRes.data;
+                const member = memberRes.data;
+                isTontineAdmin = (tontine && tontine.admin_id === currentUser.id) || (member && member.role === 'PRESIDENT');
+
+                // Calculer le solde et les frais de caisse
                 let solde = 0;
+                let soldeFrais = 0;
                 if (caisse.transactions) {
-                    caisse.transactions.forEach(t => solde += parseInt(t.montant));
+                    caisse.transactions.forEach(t => {
+                        const m = parseInt(t.montant, 10);
+                        solde += m;
+                        if (t.type === 'FRAIS_CAISSE') {
+                            soldeFrais += m;
+                        }
+                    });
                 }
                 document.getElementById('caisse-balance').innerText = `${solde.toLocaleString()} F`;
+                document.getElementById('frais-balance').innerText = `${soldeFrais.toLocaleString()} F`;
 
-                if (caisse.cycles && caisse.cycles.length > 0) {
-                    document.getElementById('stat-cycle').innerText = `#${caisse.cycles[0].numeroCycle}`;
+                allCycles = (caisse.cycles || []).sort((a, b) => b.numero_cycle - a.numero_cycle);
+                const select = document.getElementById('cycle-select');
+                select.innerHTML = '';
+                allCycles.forEach(c => {
+                    const opt = document.createElement('option');
+                    opt.value = c.id;
+                    opt.innerText = `Cycle #${c.numero_cycle} (${c.est_cloture ? 'Clôturé' : 'Actif'})`;
+                    select.appendChild(opt);
+                });
+
+                const activeCycle = allCycles.find(c => !c.est_cloture) || allCycles[0];
+                if (activeCycle) {
+                    selectedCycleId = activeCycle.id;
+                    select.value = selectedCycleId;
                 }
 
-                // Bénéficiaire actuel (Tour actuel)
-                const tourRes = await fetch(`/caisses/${caisseId}/tours/current`);
-                if (tourRes.ok) {
-                    const tour = await tourRes.json();
-                    if (tour && tour.beneficiary) {
-                        document.getElementById('next-ben').innerText = tour.beneficiary.nomSaisi;
-                    }
-                }
+                await loadCycleData(selectedCycleId);
 
                 const list = document.getElementById('participant-list');
                 list.innerHTML = '';
 
-                // Note: Ici on simule car il faut un endpoint qui ramène les participants de la caisse
-                // Dans votre app Android, c'est fait via une requête complexe sur les membres de la tontine
-                // On va juste lister les membres de la tontine parente pour le moment
-                const tontineRes = await fetch(`/tontines/${caisse.tontineId}`);
-                const tontine = await tontineRes.json();
+                const { data: members, error: membersError } = await db.from('members')
+                    .select('id,nom_saisi').eq('tontine_id', caisse.tontine_id).order('joined_at');
+                if (membersError) throw membersError;
+                document.getElementById('part-count').innerText = members.length;
+                document.getElementById('stat-members').innerText = members.length;
 
-                document.getElementById('part-count').innerText = tontine.members.length;
-                document.getElementById('stat-members').innerText = tontine.members.length;
-
-                tontine.members.forEach((m, index) => {
+                members.forEach((m, index) => {
                     const item = document.createElement('div');
                     item.className = "bg-gray-800/40 border border-gray-700 p-5 rounded-[2rem] flex items-center gap-5 hover:border-cyan-500/30 transition shadow-lg cursor-pointer";
                     item.onclick = () => window.location.href = `/record-transaction?caisseId=${caisseId}&memberId=${m.id}`;
                     item.innerHTML = `
                         <div class="w-12 h-12 bg-gray-700 rounded-full flex items-center justify-center font-black text-gray-400">${index + 1}</div>
                         <div class="flex-1">
-                            <p class="font-black text-white uppercase text-sm leading-none mb-1">${m.nomSaisi}</p>
+                            <p class="font-black text-white uppercase text-sm leading-none mb-1">${escapeHtml(m.nom_saisi)}</p>
                             <p class="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Ordre : ${index + 1}</p>
                         </div>
                         <div class="flex gap-2">
@@ -210,30 +245,113 @@
             } catch (e) { console.error(e); }
         }
 
-        async function confirmCloseCycle() {
-            if (!confirm("Êtes-vous sûr de vouloir clôturer ce cycle ? Cela va générer un nouveau cycle vierge pour les prochaines cotisations.")) {
-                return;
+        async function loadCycleData(cycleId) {
+            currentCycleId = cycleId;
+            const cycle = allCycles.find(c => c.id == cycleId);
+            if (cycle) {
+                document.getElementById('stat-cycle').innerText = `#${cycle.numero_cycle}`;
             }
 
-            try {
-                const res = await fetch(`/caisses/${caisseId}/close-cycle`, { method: 'POST' });
-                const result = await res.json();
+            const { data: tour } = cycleId ? await db.from('tours')
+                .select('beneficiary_id,member:members!tours_beneficiary_id_fkey(nom_saisi)')
+                .eq('cycle_id', cycleId).eq('est_termine', false)
+                .order('numero_tour').limit(1).maybeSingle() : { data: null };
+            if (tour && tour.member) {
+                document.getElementById('next-ben').innerText = tour.member.nom_saisi;
+            } else {
+                document.getElementById('next-ben').innerText = "À DÉFINIR";
+            }
 
-                if (res.ok) {
-                    alert(result.message);
-                    fetchCaisseDetails(); // Rafraîchir pour voir le nouveau cycle
+            const cycleActions = document.getElementById('cycle-actions');
+            cycleActions.innerHTML = '';
+
+            if (cycle && !cycle.est_cloture) {
+                const hasHigher = allCycles.some(c => c.numero_cycle > cycle.numero_cycle);
+                const buttonText = hasHigher ? "Refermer le Cycle" : "Clôturer le Cycle";
+                cycleActions.innerHTML = `
+                    <button onclick="confirmCloseCycle()" class="w-full bg-red-600/20 hover:bg-red-600 text-red-500 hover:text-white border border-red-500/30 rounded-2xl py-4 text-xs font-black uppercase tracking-widest transition duration-300 shadow-xl">
+                        ${buttonText}
+                    </button>
+                `;
+            } else if (cycle && cycle.est_cloture) {
+                if (isTontineAdmin) {
+                    cycleActions.innerHTML = `
+                        <button onclick="confirmReopenCycle('${cycle.id}')" class="w-full bg-cyan-500 hover:bg-cyan-400 text-gray-900 border border-cyan-500/20 rounded-2xl py-4 text-xs font-black uppercase tracking-widest transition duration-300 shadow-xl">
+                            Réouvrir ce Cycle Clôturé
+                        </button>
+                    `;
                 } else {
-                    alert(result.error);
+                    cycleActions.innerHTML = `
+                        <div class="bg-gray-800/40 border border-gray-700 p-4 rounded-2xl text-center">
+                            <p class="text-xs font-bold text-gray-500 uppercase tracking-widest">Cycle Clôturé</p>
+                        </div>
+                    `;
                 }
+            }
+        }
+
+        function onCycleChange(cycleId) {
+            selectedCycleId = cycleId;
+            loadCycleData(selectedCycleId);
+        }
+
+        async function confirmCloseCycle() {
+            if (!confirm("Êtes-vous sûr de vouloir clôturer ce cycle ?")) return;
+
+            try {
+                const currentCycle = allCycles.find(c => c.id == selectedCycleId);
+                if (!currentCycle) throw new Error("Cycle introuvable.");
+
+                const { error: closeError } = await db.from('cycles').update({
+                    est_cloture: true, date_fin: Date.now()
+                }).eq('id', currentCycle.id);
+                if (closeError) throw closeError;
+
+                const nextNum = currentCycle.numero_cycle + 1;
+                const existingNext = allCycles.find(c => c.numero_cycle === nextNum);
+
+                if (!existingNext) {
+                    const { error: newCycleError } = await db.from('cycles').insert({
+                        caisse_id: caisseId, numero_cycle: nextNum, date_debut: Date.now()
+                    });
+                    if (newCycleError) throw newCycleError;
+                    alert("Cycle clôturé. Un nouveau cycle a été créé.");
+                } else {
+                    alert("Cycle clôturé.");
+                }
+                fetchCaisseDetails();
             } catch (e) {
-                alert("Erreur de connexion au serveur");
+                alert(e.message || "Erreur lors de la clôture");
+            }
+        }
+
+        async function confirmReopenCycle(cycleId) {
+            if (!confirm("Voulez-vous vraiment réouvrir ce cycle ? Cela va refermer temporairement le cycle actuellement ouvert.")) return;
+            try {
+                const openCycle = allCycles.find(c => !c.est_cloture && c.id != cycleId);
+                if (openCycle) {
+                    await db.from('cycles').update({
+                        est_cloture: true, date_fin: Date.now()
+                    }).eq('id', openCycle.id);
+                }
+                const { error } = await db.from('cycles').update({
+                    est_cloture: false,
+                    date_fin: null
+                }).eq('id', cycleId);
+                if (error) throw error;
+                alert("Cycle réouvert avec succès.");
+                fetchCaisseDetails();
+            } catch (e) {
+                alert(e.message || "Erreur lors de la réouverture du cycle");
             }
         }
 
         async function fetchRotation() {
             try {
-                const res = await fetch(`/caisses/${caisseId}/participants?userId=${currentUser.id}`);
-                const participants = await res.json();
+                const { data: participants, error } = await db.from('caisse_participants')
+                    .select('member_id,ordre_passage,members(id,nom_saisi)')
+                    .eq('caisse_id', caisseId).order('ordre_passage');
+                if (error) throw error;
                 const list = document.getElementById('rotation-list');
                 list.innerHTML = '';
 
@@ -243,9 +361,9 @@
                     item.innerHTML = `
                         <div class="w-10 h-10 bg-gray-700 rounded-full flex items-center justify-center font-black text-xs text-gray-400">${index + 1}</div>
                         <div class="flex-1">
-                            <p class="font-black text-white uppercase text-sm">${p.member.nomSaisi}</p>
+                            <p class="font-black text-white uppercase text-sm">${escapeHtml(p.members.nom_saisi)}</p>
                         </div>
-                        <button onclick="setAsBeneficiary('${p.memberId}', ${index + 1})" class="bg-cyan-500/10 hover:bg-cyan-500 text-cyan-400 hover:text-gray-900 px-4 py-2 rounded-xl text-[10px] font-black transition border border-cyan-500/20 uppercase tracking-tighter">Bénéficiaire</button>
+                        <button onclick="setAsBeneficiary('${p.member_id}', ${index + 1})" class="bg-cyan-500/10 hover:bg-cyan-500 text-cyan-400 hover:text-gray-900 px-4 py-2 rounded-xl text-[10px] font-black transition border border-cyan-500/20 uppercase tracking-tighter">Bénéficiaire</button>
                     `;
                     list.appendChild(item);
                 });
@@ -254,19 +372,19 @@
 
         async function setAsBeneficiary(memberId, numTour) {
             try {
-                const res = await fetch(`/caisses/${caisseId}/tours`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        beneficiaryId: memberId,
-                        numeroTour: numTour
-                    })
-                });
-                if (res.ok) {
-                    alert("Bénéficiaire défini pour ce tour !");
-                    fetchCaisseDetails();
-                }
-            } catch (e) { alert("Erreur"); }
+                if (!currentCycleId) throw new Error("Aucun cycle actif.");
+                const { data: existing, error } = await db.from('tours').select('id')
+                    .eq('cycle_id', currentCycleId).eq('numero_tour', numTour).maybeSingle();
+                if (error) throw error;
+                const result = existing
+                    ? await db.from('tours').update({ beneficiary_id: memberId }).eq('id', existing.id)
+                    : await db.from('tours').insert({
+                        cycle_id: currentCycleId, beneficiary_id: memberId, numero_tour: numTour
+                    });
+                if (result.error) throw result.error;
+                alert("Bénéficiaire défini pour ce tour !");
+                fetchCaisseDetails();
+            } catch (e) { alert(e.message || "Erreur"); }
         }
     </script>
 </body>

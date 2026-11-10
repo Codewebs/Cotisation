@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cotisation - Créer une Caisse</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+    <script src="/js/supabase-config.js"></script>
+    <script src="/js/supabase-client.js"></script>
+    <script src="/js/realtime.js"></script>
 </head>
 <body class="bg-gray-900 text-white min-h-screen p-4 md:p-8 flex items-center justify-center">
     <div class="max-w-3xl w-full bg-gray-800 rounded-[2.5rem] shadow-2xl border border-gray-700 p-8 md:p-12">
@@ -33,6 +37,10 @@
                     <label class="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">Montant Fixe (Optionnel)</label>
                     <input id="montantFixe" type="number" placeholder="Ex: 5000" class="w-full bg-gray-700 border border-gray-600 rounded-2xl px-5 py-4 text-sm font-bold focus:ring-2 focus:ring-cyan-500 outline-none transition">
                 </div>
+                <div>
+                    <label class="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">Frais de gestion / prélèvement (FCFA)</label>
+                    <input id="fraisCaisse" type="number" placeholder="Ex: 200" class="w-full bg-gray-700 border border-gray-600 rounded-2xl px-5 py-4 text-sm font-bold focus:ring-2 focus:ring-cyan-500 outline-none transition">
+                </div>
             </div>
 
             <!-- Paramètres avancés -->
@@ -58,6 +66,84 @@
                 <div>
                     <label class="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">Pénalité de Retard</label>
                     <input id="penaliteRetard" type="number" placeholder="Ex: 500" class="w-full bg-gray-700 border border-gray-600 rounded-2xl px-5 py-4 text-sm font-bold focus:ring-2 focus:ring-cyan-500 outline-none transition">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">Jour / Date Limite de Paiement</label>
+                    <select id="dateLimiteJour" class="w-full bg-gray-700 border border-gray-600 rounded-2xl px-5 py-4 text-sm font-bold text-white focus:ring-2 focus:ring-cyan-500 outline-none appearance-none transition">
+                        <option value="">-- CHOISIR LE JOUR/DATE --</option>
+                        <optgroup label="Jours de la semaine (Hebdo)">
+                            <option value="1">Lundi</option>
+                            <option value="2">Mardi</option>
+                            <option value="3">Mercredi</option>
+                            <option value="4">Jeudi</option>
+                            <option value="5">Vendredi</option>
+                            <option value="6">Samedi</option>
+                            <option value="7">Dimanche</option>
+                        </optgroup>
+                        <optgroup label="Dates du mois (Mensuel)">
+                            <option value="1">1er du mois</option>
+                            <option value="2">2 du mois</option>
+                            <option value="3">3 du mois</option>
+                            <option value="4">4 du mois</option>
+                            <option value="5">5 du mois</option>
+                            <option value="6">6 du mois</option>
+                            <option value="7">7 du mois</option>
+                            <option value="8">8 du mois</option>
+                            <option value="9">9 du mois</option>
+                            <option value="10">10 du mois</option>
+                            <option value="11">11 du mois</option>
+                            <option value="12">12 du mois</option>
+                            <option value="13">13 du mois</option>
+                            <option value="14">14 du mois</option>
+                            <option value="15">15 du mois</option>
+                            <option value="16">16 du mois</option>
+                            <option value="17">17 du mois</option>
+                            <option value="18">18 du mois</option>
+                            <option value="19">19 du mois</option>
+                            <option value="20">20 du mois</option>
+                            <option value="21">21 du mois</option>
+                            <option value="22">22 du mois</option>
+                            <option value="23">23 du mois</option>
+                            <option value="24">24 du mois</option>
+                            <option value="25">25 du mois</option>
+                            <option value="26">26 du mois</option>
+                            <option value="27">27 du mois</option>
+                            <option value="28">28 du mois</option>
+                            <option value="29">29 du mois</option>
+                            <option value="30">30 du mois</option>
+                            <option value="31">31 du mois</option>
+                        </optgroup>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">Heure Limite de Paiement</label>
+                    <select id="heureLimite" class="w-full bg-gray-700 border border-gray-600 rounded-2xl px-5 py-4 text-sm font-bold text-white focus:ring-2 focus:ring-cyan-500 outline-none appearance-none transition">
+                        <option value="">-- CHOISIR L'HEURE --</option>
+                        <option value="0">00h00</option>
+                        <option value="1">01h00</option>
+                        <option value="2">02h00</option>
+                        <option value="3">03h00</option>
+                        <option value="4">04h00</option>
+                        <option value="5">05h00</option>
+                        <option value="6">06h00</option>
+                        <option value="7">07h00</option>
+                        <option value="8">08h00</option>
+                        <option value="9">09h00</option>
+                        <option value="10">10h00</option>
+                        <option value="11">11h00</option>
+                        <option value="12">12h00</option>
+                        <option value="13">13h00</option>
+                        <option value="14">14h00</option>
+                        <option value="15">15h00</option>
+                        <option value="16">16h00</option>
+                        <option value="17">17h00</option>
+                        <option value="18">18h00</option>
+                        <option value="19">19h00</option>
+                        <option value="20">20h00</option>
+                        <option value="21">21h00</option>
+                        <option value="22">22h00</option>
+                        <option value="23">23h00</option>
+                    </select>
                 </div>
             </div>
         </div>
@@ -91,34 +177,44 @@
             }
 
             const data = {
-                tontineId,
+                tontine_id: tontineId,
                 type: document.getElementById('type').value,
                 libelle: document.getElementById('libelle').value,
-                montantFixe: document.getElementById('montantFixe').value || null,
+                montant_fixe: document.getElementById('montantFixe').value || null,
                 redistribution: document.getElementById('redistribution').checked,
-                possibilitePret: document.getElementById('possibilitePret').checked,
-                autoriserPretSurAmendes: document.getElementById('autoriserPretSurAmendes').checked,
-                penaliteRetardFixe: document.getElementById('penaliteRetard').value || null,
-                updatedAt: Date.now()
+                possibilite_pret: document.getElementById('possibilitePret').checked,
+                autoriser_pret_sur_amendes: document.getElementById('autoriserPretSurAmendes').checked,
+                penalite_retard_fixe: document.getElementById('penaliteRetard').value || null,
+                date_limite_jour: document.getElementById('dateLimiteJour').value || null,
+                heure_limite: document.getElementById('heureLimite').value || null,
+                frais_caisse: document.getElementById('fraisCaisse').value || null,
+                updated_at: Date.now()
             };
 
             if (!data.libelle) return alert("Veuillez saisir un nom pour la caisse.");
 
             try {
-                const res = await fetch('/caisses', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(data)
+                const { data: caisse, error } = await db.from('caisses').insert(data).select('id').single();
+                if (error) throw error;
+                const { error: cycleError } = await db.from('cycles').insert({
+                    caisse_id: caisse.id, numero_cycle: 1, date_debut: Date.now()
                 });
-                if (res.ok) {
-                    window.location.href = `/tontine-details?id=${tontineId}`;
-                } else {
-                    const err = await res.json();
-                    alert("Erreur : " + (err.error || "Inconnue"));
+                if (cycleError) throw cycleError;
+                const { data: members, error: membersError } = await db.from('members')
+                    .select('id').eq('tontine_id', tontineId).order('joined_at');
+                if (membersError) throw membersError;
+                if (members.length) {
+                    const { error: participantsError } = await db.from('caisse_participants').insert(
+                        members.map((member, index) => ({
+                            caisse_id: caisse.id, member_id: member.id, ordre_passage: index + 1
+                        }))
+                    );
+                    if (participantsError) throw participantsError;
                 }
+                window.location.href = `/tontine-details?id=${tontineId}`;
             } catch (e) {
                 console.error(e);
-                alert("Erreur de connexion au serveur");
+                alert("Erreur : " + (e.message || "Enregistrement impossible"));
             }
         }
     </script>

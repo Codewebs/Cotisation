@@ -5,6 +5,7 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.indiza.cotisation.sync.SyncStatus
 import com.indiza.cotisation.sync.Syncable
+import kotlinx.serialization.SerialName
 import java.time.LocalDate
 
 @Entity(
@@ -23,6 +24,7 @@ data class TontineEntity(
     val isAnonymous: Boolean = false,
     val isOnline: Boolean = true,
     val closed: Boolean = false,
+    val hideInfoForSimpleMembers: Boolean = false,
     val creatorId: String? = null, // ID de l'initiateur
     override val remoteId: String? = null,
     override val syncStatus: SyncStatus = SyncStatus.PENDING_CREATE,
@@ -41,6 +43,8 @@ data class TontineSyncDto(
     val exercice: String?,
     val dateDebut: String,
     val dateFin: String,
+    @SerialName("is_anonymous") val isAnonymous: Boolean = false,
+    @SerialName("hide_info_for_simple_members") val hideInfoForSimpleMembers: Boolean = false,
     val creatorId: String? = null,
     val updatedAt: Long
 )
@@ -50,6 +54,8 @@ fun TontineSyncDto.toApiDto() = TontineApiDto(
     exercice = exercice,
     dateDebut = dateDebut,
     dateFin = dateFin,
+    isAnonymous = isAnonymous,
+    hideInfoForSimpleMembers = hideInfoForSimpleMembers,
     creatorId = creatorId,
     updatedAt = updatedAt
 )
@@ -59,5 +65,7 @@ fun TontineEntity.toSyncDto() = TontineSyncDto(
     exercice = exercice,
     dateDebut = dateDebut.toString(),
     dateFin = dateFin.toString(),
+    isAnonymous = isAnonymous,
+    hideInfoForSimpleMembers = hideInfoForSimpleMembers,
     updatedAt = updatedAt
 )

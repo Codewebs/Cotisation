@@ -4,7 +4,6 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
-import android.util.Base64
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.indiza.cotisation.users.SessionDao
@@ -12,16 +11,17 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
-import java.io.InputStream
 import javax.inject.Inject
 
 data class ChatUiState(
     val comments: List<CommentResponse> = emptyList(),
     val isLoading: Boolean = false,
     val isSending: Boolean = false,
-    val selectedImageBase64: String? = null
+    val selectedImageUri: Uri? = null,
+    val errorMessage: String? = null
 )
 
 @HiltViewModel
@@ -32,48 +32,90 @@ class ChatViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(ChatUiState())
     val state = _state.asStateFlow()
+    private var realtimeJob: Job? = null
 
     fun loadComments(tontineId: String) {
         viewModelScope.launch {
-            _state.update { it.copy(isLoading = true) }
+            _state.update { it.copy(isLoading = true, errorMessage = null) }
             try {
                 val list = repository.getComments(tontineId)
-                _state.update { it.copy(comments = list, isLoading = false) }
+                _state.update {
+                    it.copy(comments = list, isLoading = false, errorMessage = null)
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
-                _state.update { it.copy(isLoading = false) }
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = e.message ?: "Impossible de charger les messages."
+                    )
+                }
+            }
+        }
+    }
+
+    fun observeComments(tontineId: String) {
+        realtimeJob?.cancel()
+        realtimeJob = viewModelScope.launch {
+            try {
+                repository.observeCommentChanges(tontineId).collect {
+                    loadComments(tontineId)
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update {
+                    it.copy(
+                        errorMessage = e.message
+                            ?: "La connexion en direct au chat a échoué."
+                    )
+                }
             }
         }
     }
 
     fun onImageSelected(context: Context, uri: Uri) {
-        viewModelScope.launch {
-            val base64 = uriToBase64(context, uri)
-            _state.update { it.copy(selectedImageBase64 = base64) }
-        }
+        _state.update { it.copy(selectedImageUri = uri) }
     }
 
     fun clearImage() {
-        _state.update { it.copy(selectedImageBase64 = null) }
+        _state.update { it.copy(selectedImageUri = null) }
     }
 
-    fun sendComment(tontineId: String, content: String) {
+    fun sendComment(context: Context, tontineId: String, content: String) {
         viewModelScope.launch {
-            val session = sessionDao.getCurrentSession() ?: return@launch
-            _state.update { it.copy(isSending = true) }
+            if (sessionDao.getCurrentSession() == null) {
+                _state.update { it.copy(errorMessage = "Connectez-vous pour envoyer un message.") }
+                return@launch
+            }
+            _state.update { it.copy(isSending = true, errorMessage = null) }
             try {
-                repository.postComment(tontineId, session.userId, content, _state.value.selectedImageBase64)
-                _state.update { it.copy(isSending = false, selectedImageBase64 = null) }
+                val imageUri = _state.value.selectedImageUri
+                val imageBytes = imageUri?.let { uriToJpegBytes(context, it) }
+                if (imageUri != null && imageBytes == null) {
+                    throw IllegalStateException("Impossible de lire l’image sélectionnée.")
+                }
+                repository.postComment(tontineId, content, imageBytes)
+                _state.update { it.copy(isSending = false, selectedImageUri = null) }
                 loadComments(tontineId)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
-                _state.update { it.copy(isSending = false) }
+                _state.update {
+                    it.copy(
+                        isSending = false,
+                        errorMessage = e.message ?: "Impossible d’envoyer le message."
+                    )
+                }
             }
         }
     }
 
-    private fun uriToBase64(context: Context, uri: Uri): String? {
+    private fun uriToJpegBytes(context: Context, uri: Uri): ByteArray? {
         return try {
-            val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
-            val bitmap = BitmapFactory.decodeStream(inputStream)
+            val bitmap = context.contentResolver.openInputStream(uri)?.use(BitmapFactory::decodeStream)
+                ?: return null
             val outputStream = ByteArrayOutputStream()
             
             // Redimensionner si nécessaire pour éviter les dépassements de mémoire
@@ -83,8 +125,7 @@ class ChatViewModel @Inject constructor(
             } else bitmap
 
             scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 70, outputStream)
-            val bytes = outputStream.toByteArray()
-            "data:image/jpeg;base64," + Base64.encodeToString(bytes, Base64.DEFAULT)
+            outputStream.toByteArray()
         } catch (e: Exception) {
             null
         }

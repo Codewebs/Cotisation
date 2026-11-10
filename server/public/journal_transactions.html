@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cotisation - Journal des Transactions</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+    <script src="/js/supabase-config.js"></script>
+    <script src="/js/supabase-client.js"></script>
+    <script src="/js/realtime.js"></script>
     <style>
         .glass { background: rgba(17, 24, 39, 0.85); backdrop-filter: blur(10px); }
     </style>
@@ -65,36 +69,39 @@
 
         async function fetchJournal() {
             try {
-                const res = await fetch(`/caisses/${caisseId}`);
-                const caisse = await res.json();
+                const { data: caisse, error } = await db.from('caisses')
+                    .select('*,cycles(id,numero_cycle,est_cloture),transactions(id,member_id,montant,type,motif,date_transaction,cycle_id)')
+                    .eq('id', caisseId).single();
+                if (error) throw error;
 
                 document.getElementById('caisse-name').innerText = `JOURNAL - ${caisse.libelle}`;
-                if (caisse.cycles && caisse.cycles.length > 0) {
-                    document.getElementById('cycle-info').innerText = `Cycle #${caisse.cycles[0].numeroCycle} • Opérations Actives`;
-                }
+                const cycle = (caisse.cycles || []).filter(item => !item.est_cloture)
+                    .sort((a, b) => b.numero_cycle - a.numero_cycle)[0];
+                if (cycle) document.getElementById('cycle-info').innerText = `Cycle #${cycle.numero_cycle} • Opérations Actives`;
 
                 const list = document.getElementById('transaction-list');
                 const empty = document.getElementById('empty-state');
                 list.innerHTML = '';
 
-                if (!caisse.transactions || caisse.transactions.length === 0) {
+                const transactions = (caisse.transactions || []).filter(tx => !cycle || tx.cycle_id === cycle.id);
+                if (transactions.length === 0) {
                     empty.classList.remove('hidden');
                     return;
                 }
 
                 let total = 0;
                 // On trie par date décroissante
-                caisse.transactions.sort((a, b) => b.dateTransaction - a.dateTransaction);
+                transactions.sort((a, b) => b.date_transaction - a.date_transaction);
 
-                // Charger les membres pour avoir leurs noms (car Transaction n'inclut pas le membre par défaut dans notre API actuelle)
-                const tontineRes = await fetch(`/tontines/${caisse.tontineId}`);
-                const tontine = await tontineRes.json();
+                const { data: members, error: membersError } = await db.from('members')
+                    .select('id,nom_saisi').eq('tontine_id', caisse.tontine_id);
+                if (membersError) throw membersError;
                 const membersMap = {};
-                tontine.members.forEach(m => membersMap[m.id] = m.nomSaisi);
+                members.forEach(m => membersMap[m.id] = m.nom_saisi);
 
-                caisse.transactions.forEach(t => {
+                transactions.forEach(t => {
                     total += Math.abs(t.montant);
-                    const date = new Date(parseInt(t.dateTransaction));
+                    const date = new Date(parseInt(t.date_transaction, 10));
                     const row = document.createElement('tr');
                     row.className = "border-b border-gray-700/50 hover:bg-white/5 transition group";
 
@@ -110,14 +117,14 @@
                         <td class="px-8 py-6">
                             <div class="flex items-center gap-3">
                                 <div class="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center text-[10px] font-black text-cyan-400 border border-cyan-500/20">
-                                    ${(membersMap[t.memberId] || '?').charAt(0)}
+                                    ${escapeHtml((membersMap[t.member_id] || '?').charAt(0))}
                                 </div>
-                                <p class="text-sm font-black uppercase text-gray-300 group-hover:text-white transition">${membersMap[t.memberId] || 'Inconnu'}</p>
+                                <p class="text-sm font-black uppercase text-gray-300 group-hover:text-white transition">${escapeHtml(membersMap[t.member_id] || 'Inconnu')}</p>
                             </div>
                         </td>
                         <td class="px-8 py-6">
-                            <span class="bg-gray-700/50 text-gray-400 text-[9px] font-black px-2 py-1 rounded border border-gray-600 uppercase tracking-widest mb-1 inline-block">${t.type}</span>
-                            <p class="text-xs text-gray-500 font-medium">${t.motif || 'Aucun motif'}</p>
+                            <span class="bg-gray-700/50 text-gray-400 text-[9px] font-black px-2 py-1 rounded border border-gray-600 uppercase tracking-widest mb-1 inline-block">${escapeHtml(t.type)}</span>
+                            <p class="text-xs text-gray-500 font-medium">${escapeHtml(t.motif || 'Aucun motif')}</p>
                         </td>
                         <td class="px-8 py-6 text-right">
                             <p class="text-lg font-black ${amountClass}">${amountPrefix}${Math.abs(t.montant).toLocaleString()} F</p>

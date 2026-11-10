@@ -20,6 +20,8 @@ data class CaisseDraft(
     var fraisCaisse: Long? = null,
     val dureeCycles: Int? = null,
     var dateLimiteJour: Int? = null,
+    var jourCotisation: String? = null,
+    var heureLimite: Int? = null,
     var respecterFrequenceStrictement: Boolean = false
 )
 

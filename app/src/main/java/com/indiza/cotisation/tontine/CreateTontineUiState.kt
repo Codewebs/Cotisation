@@ -12,5 +12,6 @@ data class CreateTontineUiState(
     val isSaving: Boolean = false,
     val isAnonymous: Boolean = false,
     val isOnline: Boolean = true,
+    val hideInfoForSimpleMembers: Boolean = false,
     val error: String? = null
 )

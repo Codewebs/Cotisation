@@ -21,10 +21,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -39,15 +37,19 @@ import com.indiza.cotisation.tools.NeonCyan
 fun AddParticipantsDialog(
     allTontineMembers: List<TontineMemberWithUser>,
     currentParticipants: List<ParticipantWithParts>,
-    onToggle: (Long, Boolean, Int) -> Unit,
-    onDismiss: () -> Unit
+    canAddMembers: Boolean,
+    membersThatCannotBeRemoved: Set<Long>,
+    onSave: (Map<Long, Int>) -> Unit,
+    isSaving: Boolean = false
 ) {
-    
-    val isAllSelected = allTontineMembers.isNotEmpty() &&
-            currentParticipants.size == allTontineMembers.size
+    val selectedParts = remember {
+        mutableStateMapOf<Long, Int>().apply {
+            currentParticipants.forEach { put(it.member.id, it.nombreParts) }
+        }
+    }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!isSaving) onSave(selectedParts.toMap()) },
         title = {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -56,7 +58,7 @@ fun AddParticipantsDialog(
             ) {
                 Text("Participants")
                 Text(
-                    "${currentParticipants.size}/${allTontineMembers.size}",
+                    "${selectedParts.size}/${allTontineMembers.size}",
                     style = MaterialTheme.typography.bodySmall,
                     color = NeonCyan
                 )
@@ -65,11 +67,9 @@ fun AddParticipantsDialog(
         text = {
             LazyColumn(modifier = Modifier.heightIn(max = 450.dp)) {
                 items(allTontineMembers) { memberWithUser ->
-                    val participant = currentParticipants.find { it.memberWithUser.member.id == memberWithUser.member.id }
-                    val isChecked = participant != null
-                    var partsCount by remember(participant) {
-                        mutableStateOf(participant?.nombreParts ?: 1)
-                    }
+                    val memberId = memberWithUser.member.id
+                    val isChecked = memberId in selectedParts
+                    val partsCount = selectedParts[memberId] ?: 1
 
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -77,7 +77,15 @@ fun AddParticipantsDialog(
                     ) {
                         Checkbox(
                             checked = isChecked,
-                            onCheckedChange = { onToggle(memberWithUser.member.id, it, partsCount) }
+                            enabled = if (isChecked) {
+                                memberId !in membersThatCannotBeRemoved
+                            } else {
+                                canAddMembers
+                            },
+                            onCheckedChange = {
+                                if (it) selectedParts[memberId] = partsCount
+                                else selectedParts.remove(memberId)
+                            }
                         )
 
                         Column(modifier = Modifier.weight(1f)) {
@@ -90,19 +98,15 @@ fun AddParticipantsDialog(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 IconButton(onClick = {
                                     if (partsCount > 1) {
-                                        val newCount = partsCount - 1
-                                        partsCount = newCount // Update local UI
-                                        onToggle(memberWithUser.member.id, true, newCount) // Update DB
+                                        selectedParts[memberId] = partsCount - 1
                                     }
-                                }) { Icon(Icons.Default.Remove, null) }
+                                }, enabled = canAddMembers) { Icon(Icons.Default.Remove, null) }
 
                                 Text("$partsCount", color = NeonCyan)
 
                                 IconButton(onClick = {
-                                    val newCount = partsCount + 1
-                                    partsCount = newCount // Update local UI
-                                    onToggle(memberWithUser.member.id, true, newCount) // Update DB
-                                }) { Icon(Icons.Default.Add, null) }
+                                    selectedParts[memberId] = partsCount + 1
+                                }, enabled = canAddMembers) { Icon(Icons.Default.Add, null) }
                             }
                         }
                     }
@@ -111,10 +115,15 @@ fun AddParticipantsDialog(
         },
         confirmButton = {
             Button(
-                onClick = onDismiss,
+                onClick = { onSave(selectedParts.toMap()) },
+                enabled = !isSaving,
                 colors = ButtonDefaults.buttonColors(containerColor = NeonCyan)
             ) {
-                Text("TERMINER", color = Color.Black, fontWeight = FontWeight.Bold)
+                Text(
+                    if (isSaving) "ENREGISTREMENT..." else "TERMINER",
+                    color = Color.Black,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
     )

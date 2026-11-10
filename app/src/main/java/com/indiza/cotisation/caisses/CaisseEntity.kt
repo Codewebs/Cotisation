@@ -48,6 +48,8 @@ data class CaisseEntity(
     val penaliteRetardFixe: Long? = null,
     val penaliteEchecFixe: Long? = null,
     val dateLimiteJour: Int? = null,
+    val jourCotisation: String? = null,
+    val heureLimite: Int? = null,
     val fraisCaisse: Long? = null,
     val ordreFige: Boolean = false,
 

@@ -14,6 +14,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.indiza.cotisation.tools.CosmicBackground
 import com.indiza.cotisation.tools.NeonCyan
 
@@ -28,8 +31,13 @@ fun JoinInvitationScreen(
 ) {
     val state by viewModel.state.collectAsState()
 
-    LaunchedEffect(inviteCode) {
-        viewModel.loadInvitation(inviteCode)
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(inviteCode, lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) viewModel.loadInvitation(inviteCode)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     LaunchedEffect(state.joinSuccess) {
@@ -63,6 +71,10 @@ fun JoinInvitationScreen(
                     ) {
                         Text(state.error!!, color = Color.Red, textAlign = TextAlign.Center)
                         Spacer(Modifier.height(16.dp))
+                        if (!state.isAuthenticated) {
+                            Button(onClick = onNavigateToAuth) { Text("SE CONNECTER") }
+                            Spacer(Modifier.height(8.dp))
+                        }
                         Button(onClick = onBack) { Text("RETOUR") }
                     }
                 } else {
@@ -82,11 +94,13 @@ fun JoinInvitationScreen(
                             textAlign = TextAlign.Center
                         )
                         Spacer(Modifier.height(8.dp))
-                        Text(
-                            "Invité par ${state.inviterName}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Color.Gray
-                        )
+                        state.inviterName?.let { inviter ->
+                            Text(
+                                "Invité par $inviter",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.Gray
+                            )
+                        }
 
                         Spacer(Modifier.height(48.dp))
 

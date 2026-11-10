@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cotisation - Enregistrer une Dépense</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+    <script src="/js/supabase-config.js"></script>
+    <script src="/js/supabase-client.js"></script>
+    <script src="/js/realtime.js"></script>
 </head>
 <body class="bg-gray-900 text-white min-h-screen p-4 md:p-8 flex items-center justify-center">
     <div class="max-w-2xl w-full bg-gray-800 rounded-[2.5rem] shadow-2xl border border-gray-700 p-8 md:p-12">
@@ -53,8 +57,8 @@
 
         async function fetchCaisseInfo() {
             try {
-                const res = await fetch(`/caisses/${caisseId}`);
-                const caisse = await res.json();
+                const { data: caisse, error } = await db.from('caisses').select('libelle').eq('id', caisseId).single();
+                if (error) throw error;
                 document.getElementById('caisse-info').innerText = `${caisse.libelle} • Enregistrement de sortie`;
             } catch (e) { console.error(e); }
         }
@@ -67,25 +71,14 @@
             if (!motif) return showMsg("Veuillez saisir un motif pour la dépense", false);
 
             try {
-                const res = await fetch('/sorties', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        caisseId,
-                        montant: parseInt(montant),
-                        motif: motif
-                    })
+                const { error } = await db.from('sorties_caisse').insert({
+                    caisse_id: caisseId, montant: parseInt(montant, 10), motif
                 });
-
-                if (res.ok) {
-                    showMsg("Dépense enregistrée avec succès !", true);
-                    setTimeout(() => history.back(), 1500);
-                } else {
-                    const err = await res.json();
-                    showMsg(err.error || "Erreur lors de l'enregistrement", false);
-                }
+                if (error) throw error;
+                showMsg("Dépense enregistrée avec succès !", true);
+                setTimeout(() => history.back(), 1500);
             } catch (e) {
-                showMsg("Erreur de connexion au serveur", false);
+                showMsg(e.message || "Erreur lors de l'enregistrement", false);
             }
         }
 

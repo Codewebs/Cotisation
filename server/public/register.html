@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cotisation - Inscription</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+    <script src="/js/supabase-config.js"></script>
+    <script src="/js/supabase-client.js"></script>
+    <script src="/js/realtime.js"></script>
 </head>
 <body class="bg-gray-900 text-white min-h-screen flex items-center justify-center p-4">
     <div class="max-w-md w-full bg-gray-800 rounded-2xl shadow-2xl border border-gray-700 p-8">
@@ -25,8 +29,13 @@
                     class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-300 mb-1">PIN de sécurité</label>
-                <input id="pin" type="password" placeholder="4 chiffres" maxlength="4"
+                <label class="block text-sm font-medium text-gray-300 mb-1">Adresse e-mail</label>
+                <input id="email" type="email" autocomplete="email" required placeholder="vous@exemple.com"
+                    class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-300 mb-1">Mot de passe</label>
+                <input id="password" type="password" autocomplete="new-password" minlength="8" required placeholder="8 caractères minimum"
                     class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
             </div>
 
@@ -46,33 +55,31 @@
     <script>
         async function register() {
             const msgBox = document.getElementById('msg-box');
-            const data = {
-                nom: document.getElementById('nom').value,
-                phone: document.getElementById('phone').value,
-                pin: document.getElementById('pin').value
-            };
-
             try {
-                const res = await fetch('/users/register', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(data)
+                const { data, error } = await db.auth.signUp({
+                    email: document.getElementById('email').value.trim(),
+                    password: document.getElementById('password').value,
+                    options: { data: {
+                        nom: document.getElementById('nom').value.trim(),
+                        phone: document.getElementById('phone').value.trim()
+                    } }
                 });
-                const result = await res.json();
 
                 msgBox.classList.remove('hidden', 'bg-red-900/50', 'text-red-400', 'bg-green-900/50', 'text-green-400');
-                if (res.ok) {
+                if (!error) {
                     msgBox.classList.add('bg-green-900/50', 'text-green-400');
-                    msgBox.innerText = "Succès ! Matricule : " + result.matricule;
+                    msgBox.innerText = data.session
+                        ? "Compte créé avec succès."
+                        : "Compte créé. Vérifiez votre e-mail pour confirmer l'inscription.";
                     setTimeout(() => window.location.href = '/login', 2000);
                 } else {
                     msgBox.classList.add('bg-red-900/50', 'text-red-400');
-                    msgBox.innerText = result.error || "Erreur lors de l'inscription";
+                    msgBox.innerText = error.message || "Erreur lors de l'inscription";
                 }
-            } catch (e) {
-                msgBox.classList.remove('hidden');
+            } catch (error) {
+                msgBox.classList.remove('hidden', 'bg-green-900/50', 'text-green-400');
                 msgBox.classList.add('bg-red-900/50', 'text-red-400');
-                msgBox.innerText = "Erreur de connexion au serveur";
+                msgBox.innerText = error.message || "Erreur lors de l'inscription";
             }
         }
     </script>

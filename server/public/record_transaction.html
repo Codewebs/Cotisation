@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cotisation - Enregistrer un Paiement</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+    <script src="/js/supabase-config.js"></script>
+    <script src="/js/supabase-client.js"></script>
+    <script src="/js/realtime.js"></script>
 </head>
 <body class="bg-gray-900 text-white min-h-screen p-4 md:p-8 flex items-center justify-center">
     <div class="max-w-2xl w-full bg-gray-800 rounded-[2.5rem] shadow-2xl border border-gray-700 p-8 md:p-12">
@@ -63,28 +67,27 @@
         async function fetchCaisseAndMembers() {
             try {
                 // 1. Charger les détails de la caisse pour avoir le cycle actif
-                const res = await fetch(`/caisses/${caisseId}`);
-                const caisse = await res.json();
+                const { data: caisse, error: caisseError } = await db.from('caisses')
+                    .select('id,tontine_id,libelle,montant_fixe,cycles(id,numero_cycle,est_cloture)')
+                    .eq('id', caisseId).single();
+                if (caisseError) throw caisseError;
+                const cycle = (caisse.cycles || []).filter(item => !item.est_cloture)
+                    .sort((a, b) => b.numero_cycle - a.numero_cycle)[0];
+                if (cycle) {
+                    currentCycleId = cycle.id;
+                    document.getElementById('caisse-info').innerText = `${caisse.libelle} • Cycle #${cycle.numero_cycle}`;
+                    if (caisse.montant_fixe) document.getElementById('montant').value = caisse.montant_fixe;
+                } else document.getElementById('caisse-info').innerText = `${caisse.libelle} • Aucun cycle actif`;
 
-                if (caisse.cycles && caisse.cycles.length > 0) {
-                    currentCycleId = caisse.cycles[0].id;
-                    document.getElementById('caisse-info').innerText = `${caisse.libelle} • Cycle #${caisse.cycles[0].numeroCycle}`;
-                    if (caisse.montantFixe) {
-                        document.getElementById('montant').value = caisse.montantFixe;
-                    }
-                } else {
-                    document.getElementById('caisse-info').innerText = `${caisse.libelle} • Aucun cycle actif`;
-                }
-
-                // 2. Charger les membres de la tontine pour peupler le select
-                const tontineRes = await fetch(`/tontines/${caisse.tontineId}`);
-                const tontine = await tontineRes.json();
+                const { data: members, error: memberError } = await db.from('members')
+                    .select('id,nom_saisi').eq('tontine_id', caisse.tontine_id);
+                if (memberError) throw memberError;
 
                 const select = document.getElementById('member-select');
-                tontine.members.forEach(m => {
+                members.forEach(m => {
                     const opt = document.createElement('option');
                     opt.value = m.id;
-                    opt.innerText = m.nomSaisi.toUpperCase();
+                    opt.innerText = m.nom_saisi.toUpperCase();
                     select.appendChild(opt);
                 });
 
@@ -104,7 +107,7 @@
             const memberId = document.getElementById('member-select').value;
             const montant = document.getElementById('montant').value;
             const motif = document.getElementById('motif').value;
-            const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+            const currentUser = await getCurrentUser();
 
             if (!memberId) return showMsg("Veuillez sélectionner un membre", false);
             if (!montant || montant <= 0) return showMsg("Veuillez saisir un montant valide", false);
@@ -112,29 +115,16 @@
             if (!currentUser) return showMsg("Session expirée, veuillez vous reconnecter", false);
 
             try {
-                const res = await fetch('/transactions', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        caisseId,
-                        memberId,
-                        cycleId: currentCycleId,
-                        validatedById: currentUser.id,
-                        montant: parseInt(montant),
-                        type: 'COTISATION',
-                        motif: motif || "Cotisation"
-                    })
+                const { error } = await db.from('transactions').insert({
+                    caisse_id: caisseId, member_id: memberId, cycle_id: currentCycleId,
+                    validated_by_id: currentUser.id, montant: parseInt(montant, 10),
+                    type: 'COTISATION', motif: motif || 'Cotisation'
                 });
-
-                if (res.ok) {
-                    showMsg("Paiement enregistré avec succès !", true);
-                    setTimeout(() => history.back(), 1500);
-                } else {
-                    const err = await res.json();
-                    showMsg(err.error || "Erreur lors de l'enregistrement", false);
-                }
+                if (error) throw error;
+                showMsg("Paiement enregistré avec succès !", true);
+                setTimeout(() => history.back(), 1500);
             } catch (e) {
-                showMsg("Erreur de connexion au serveur", false);
+                showMsg(e.message || "Erreur lors de l'enregistrement", false);
             }
         }
 

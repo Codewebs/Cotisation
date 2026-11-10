@@ -1,8 +1,14 @@
 package com.indiza.cotisation.users
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import android.os.Build
+import androidx.annotation.RequiresApi
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,44 +23,31 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material3.Card
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.indiza.cotisation.tontine.TontineEntity
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Login
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.AddBusiness
-import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SearchOff
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Surface
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Brush
@@ -62,35 +55,19 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.indiza.cotisation.tontine.TontineEntity
 import com.indiza.cotisation.tools.AfroGold
 import com.indiza.cotisation.tools.AfroOrange
 import com.indiza.cotisation.tools.NeonCyan
-import com.indiza.cotisation.tools.BackButton
-import com.indiza.cotisation.tools.DeepViolet
-import com.indiza.cotisation.tools.GlassWhite
-
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-
-import androidx.compose.ui.draw.clip
-
 
 // Thème de couleurs
 val DeepViolet = Color(0xFF1E1035)
 val DarkPurple = Color(0xFF2D1B4E)
-val AfroOrange = Color(0xFFFF5722)
-val AfroGold = Color(0xFFFFC107)
 val GlassWhite = Color(0x1FFFFFFF)
 val CardBackground = Color(0xCC1A102A)
 
@@ -117,6 +94,16 @@ fun SearchTontineScreen(
 
     val searchResults by viewModel.searchResults.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
+    val joinStatus by viewModel.joinStatus.collectAsStateWithLifecycle()
+    val errorMessage by viewModel.errorMessage.collectAsStateWithLifecycle()
+
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(joinStatus, errorMessage) {
+        joinStatus?.let { snackbarHostState.showSnackbar(it) }
+        errorMessage?.let { snackbarHostState.showSnackbar(it) }
+    }
+
     val hasSession by sessionViewModel.hasActiveSession.collectAsStateWithLifecycle(
         initialValue = false,
         lifecycle = lifecycleOwner.lifecycle
@@ -127,6 +114,7 @@ fun SearchTontineScreen(
     LaunchedEffect(hasSession) {
         if (hasSession) {
             notifViewModel.fetchNotifications()
+            notifViewModel.observeNotifications()
             adminViewModel.fetchStats()
         }
     }
@@ -141,13 +129,13 @@ fun SearchTontineScreen(
 
     Scaffold(
         containerColor = Color.Transparent,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
             if (hasSession) {
                 Column(
                     horizontalAlignment = Alignment.End,
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // Options contextuelles du FAB
                     AnimatedVisibility(
                         visible = isFabExpanded,
                         enter = fadeIn() + expandVertically(),
@@ -157,7 +145,6 @@ fun SearchTontineScreen(
                             horizontalAlignment = Alignment.End,
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            // Action: Mes tontines
                             FloatingActionButton(
                                 onClick = {
                                     isFabExpanded = false
@@ -173,17 +160,13 @@ fun SearchTontineScreen(
                                 ) {
                                     Icon(Icons.Default.Groups, contentDescription = null)
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Mes Tontines", fontWeight = FontWeight.SemiBold)
+                                    Text("Mes Réunions", fontWeight = FontWeight.SemiBold)
                                 }
                             }
 
-                            // Action: Profil
                             FloatingActionButton(
                                 onClick = {
                                     isFabExpanded = false
-                                    // Utiliser navController.navigate(Screen.Profile.route) 
-                                    // Mais ici on n'a pas accès au navController directement, 
-                                    // on va ajouter une callback onNavigateToProfile
                                     onNavigateToProfile()
                                 },
                                 containerColor = DarkPurple,
@@ -200,7 +183,6 @@ fun SearchTontineScreen(
                                 }
                             }
 
-                            // Action: Déconnexion
                             FloatingActionButton(
                                 onClick = {
                                     isFabExpanded = false
@@ -222,7 +204,6 @@ fun SearchTontineScreen(
                         }
                     }
 
-                    // Bouton FAB principal
                     ExtendedFloatingActionButton(
                         onClick = { isFabExpanded = !isFabExpanded },
                         containerColor = AfroOrange,
@@ -254,7 +235,6 @@ fun SearchTontineScreen(
                     .fillMaxSize()
                     .padding(horizontal = 20.dp)
             ) {
-                // Bar supérieure d'en-tête
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -275,60 +255,108 @@ fun SearchTontineScreen(
                         )
                     }
 
-                    if (hasSession) {
-                        Box {
-                            IconButton(
-                                onClick = { showNotifMenu = true },
-                                modifier = Modifier
-                                    .background(GlassWhite, CircleShape)
-                                    .size(40.dp)
-                            ) {
-                                BadgedBox(
-                                    badge = {
-                                        if (notifState.unreadCount > 0) {
-                                            Badge(containerColor = Color.Red) {
-                                                Text(notifState.unreadCount.toString(), color = Color.White)
-                                            }
-                                        }
-                                    }
-                                ) {
-                                    Icon(
-                                        imageVector = if (notifState.unreadCount > 0) Icons.Default.NotificationsActive else Icons.Default.Notifications,
-                                        contentDescription = "Notifications",
-                                        tint = if (notifState.unreadCount > 0) AfroGold else Color.White
-                                    )
-                                }
-                            }
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = { viewModel.refreshSearch(searchQuery) },
+                            modifier = Modifier
+                                .background(GlassWhite, CircleShape)
+                                .size(40.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Actualiser",
+                                tint = Color.White
+                            )
+                        }
 
-                            DropdownMenu(
-                                expanded = showNotifMenu,
-                                onDismissRequest = { showNotifMenu = false },
-                                modifier = Modifier.background(DarkPurple).width(280.dp)
-                            ) {
-                                if (notifState.notifications.isEmpty()) {
-                                    DropdownMenuItem(
-                                        text = { Text("Aucune notification", color = Color.Gray) },
-                                        onClick = {}
-                                    )
-                                }
-                                notifState.notifications.take(5).forEach { notif ->
-                                    DropdownMenuItem(
-                                        text = {
-                                            Column {
-                                                Text(notif.title, fontWeight = FontWeight.Bold, color = Color.White, fontSize = 12.sp)
-                                                Text(notif.message, color = Color.LightGray, fontSize = 10.sp, maxLines = 2)
-                                            }
-                                        },
-                                        onClick = {
-                                            showNotifMenu = false
-                                            notifViewModel.markAsRead(notif.id)
-                                            if (notif.type == "RECEIPT") onNavigateToReceipt(notif.referenceId!!)
-                                            if (notif.type == "REPORT") {
-                                                // Navigue vers les détails de la tontine
-                                                // onNavigateToList() ou autre action appropriée
+                        if (hasSession) {
+                            Box {
+                                IconButton(
+                                    onClick = { showNotifMenu = true },
+                                    modifier = Modifier
+                                        .background(GlassWhite, CircleShape)
+                                        .size(40.dp)
+                                ) {
+                                    BadgedBox(
+                                        badge = {
+                                            if (notifState.unreadCount > 0) {
+                                                Badge(containerColor = Color.Red) {
+                                                    Text(notifState.unreadCount.toString(), color = Color.White)
+                                                }
                                             }
                                         }
-                                    )
+                                    ) {
+                                        Icon(
+                                            imageVector = if (notifState.unreadCount > 0) Icons.Default.NotificationsActive else Icons.Default.Notifications,
+                                            contentDescription = "Notifications",
+                                            tint = if (notifState.unreadCount > 0) AfroGold else Color.White
+                                        )
+                                    }
+                                }
+
+                                DropdownMenu(
+                                    expanded = showNotifMenu,
+                                    onDismissRequest = { showNotifMenu = false },
+                                    modifier = Modifier.background(DarkPurple).width(280.dp)
+                                ) {
+                                    if (notifState.notifications.isEmpty()) {
+                                        DropdownMenuItem(
+                                            text = { Text("Aucune notification", color = Color.Gray) },
+                                            onClick = {}
+                                        )
+                                    }
+                                    notifState.notifications.take(5).forEach { notif ->
+                                        val isRead = notif.isRead
+                                        DropdownMenuItem(
+                                            text = {
+                                                Column {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text(
+                                                            text = notif.title, 
+                                                            fontWeight = if (isRead) FontWeight.Medium else FontWeight.Bold, 
+                                                            color = if (isRead) Color.White.copy(alpha = 0.5f) else NeonCyan, 
+                                                            fontSize = 12.sp
+                                                        )
+                                                        if (!isRead) {
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .size(6.dp)
+                                                                    .background(AfroGold, CircleShape)
+                                                            )
+                                                        }
+                                                    }
+                                                    Spacer(Modifier.height(2.dp))
+                                                    Text(
+                                                        text = notif.message, 
+                                                        color = if (isRead) Color.Gray else Color.White, 
+                                                        fontSize = 10.sp, 
+                                                        maxLines = 2
+                                                    )
+                                                }
+                                            },
+                                            modifier = Modifier.background(
+                                                if (isRead) Color.Transparent else Color.White.copy(alpha = 0.08f)
+                                            ),
+                                            onClick = {
+                                                showNotifMenu = false
+                                                notifViewModel.markAsRead(notif.id)
+                                                if (notif.type in setOf("RECEIPT", "COTISATION_RECEIPT") &&
+                                                    notif.referenceId != null
+                                                ) {
+                                                    onNavigateToReceipt(notif.referenceId)
+                                                } else {
+                                                    onNavigateToList()
+                                                }
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -337,7 +365,7 @@ fun SearchTontineScreen(
 
                 // Titre
                 Text(
-                    text = "REJOINDRE LE CERCLE",
+                    text = "REJOINDRE LA RÉUNION",
                     style = MaterialTheme.typography.headlineMedium.copy(
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 1.5.sp,
@@ -347,7 +375,7 @@ fun SearchTontineScreen(
                 )
 
                 Text(
-                    text = "Recherchez par code (ex: A1B2C3) ou par le nom d'un cercle.",
+                    text = "Recherchez par code (ex: A1B2C3) ou par le nom d'une réunion.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.White.copy(alpha = 0.7f),
                     modifier = Modifier.padding(bottom = 20.dp)
@@ -370,10 +398,27 @@ fun SearchTontineScreen(
                     Spacer(modifier = Modifier.height(16.dp))
                 }
 
-                // Bannière "Créer une tontine"
+                // Bannière "Créer une réunion"
                 CreateTontineCallToAction(
                     isAuthenticated = hasSession,
                     onCreateClick = ::handleCreateTontineClick
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Option par défaut "Les amis du dimanche"
+                DefaultTontineCallToAction(
+                    onClick = {
+                        if (hasSession) {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                viewModel.openOrJoinDefaultTontine(onOpen = { tontine ->
+                                    onJoinTontine(tontine)
+                                })
+                            }
+                        } else {
+                            onNavigateToAuth()
+                        }
+                    }
                 )
 
                 Spacer(modifier = Modifier.height(20.dp))
@@ -413,6 +458,9 @@ fun SearchTontineScreen(
                                     } else if (result.membershipStatus == "NONE") {
                                         viewModel.requestJoin(result.tontine.remoteId!!, searchQuery)
                                     }
+                                },
+                                onCancelJoinClick = {
+                                    viewModel.cancelJoinRequest(result.tontine.remoteId!!, searchQuery)
                                 }
                             )
                         }
@@ -488,8 +536,8 @@ fun CreateTontineCallToAction(
     onCreateClick: () -> Unit
 ) {
     val icon = if (isAuthenticated) Icons.Default.AddBusiness else Icons.AutoMirrored.Filled.Login
-    val title = if (isAuthenticated) "CRÉER VOTRE CERCLE" else "SE CONNECTER POUR CRÉER"
-    val subtitle = if (isAuthenticated) "Lancez votre propre tontine en quelques clics" else "Authentifiez-vous pour gérer votre tontine"
+    val title = if (isAuthenticated) "CRÉER VOTRE RÉUNION" else "SE CONNECTER POUR CRÉER"
+    val subtitle = if (isAuthenticated) "Lancez votre propre réunion en quelques clics" else "Authentifiez-vous pour gérer votre réunion"
 
     Card(
         modifier = Modifier
@@ -538,30 +586,85 @@ fun CreateTontineCallToAction(
 }
 
 @Composable
+fun DefaultTontineCallToAction(
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .clickable { onClick() },
+        colors = CardDefaults.cardColors(containerColor = CardBackground),
+        border = BorderStroke(1.dp, AfroGold.copy(alpha = 0.3f))
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .background(AfroGold.copy(alpha = 0.2f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Groups,
+                    contentDescription = null,
+                    tint = AfroGold,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "LES AMIS DU DIMANCHE",
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                )
+                Text(
+                    text = "Rejoindre ou entrer dans la réunion par défaut",
+                    color = Color.White.copy(alpha = 0.6f),
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = AfroGold
+            )
+        }
+    }
+}
+
+@Composable
 fun TontineFuturisticItem(
     tontine: TontineEntity, 
     membershipStatus: String,
-    onJoinClick: () -> Unit
+    onJoinClick: () -> Unit,
+    onCancelJoinClick: () -> Unit = {}
 ) {
     val buttonColor = when(membershipStatus) {
         "MEMBER" -> NeonCyan
-        "PENDING" -> Color.Gray
         else -> AfroOrange
     }
     
     val buttonText = when(membershipStatus) {
         "MEMBER" -> "OUVRIR"
-        "PENDING" -> "EN ATTENTE"
         else -> "REJOINDRE"
     }
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .alpha(if (membershipStatus == "PENDING") 0.58f else 1f)
             .drawBehind {
                 drawRoundRect(
-                    brush = Brush.linearGradient(listOf(AfroOrange, AfroGold)),
-                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(20.dp.toPx()),
+                    brush = if (membershipStatus == "PENDING") {
+                        Brush.linearGradient(listOf(Color.LightGray, Color.Gray))
+                    } else {
+                        Brush.linearGradient(listOf(AfroOrange, AfroGold))
+                    },
+                    cornerRadius = CornerRadius(20.dp.toPx()),
                     style = Stroke(width = 1.dp.toPx())
                 )
             },
@@ -607,31 +710,66 @@ fun TontineFuturisticItem(
                     color = Color.White
                 )
                 Text(
-                    text = if (membershipStatus == "MEMBER") "Vous êtes membre" else "ID: ${tontine.code ?: tontine.remoteId?.take(8)}",
+                    text = when (membershipStatus) {
+                        "MEMBER" -> "Vous êtes membre"
+                        "PENDING" -> "Demande en attente de validation"
+                        else -> "ID: ${tontine.code ?: tontine.remoteId?.take(8)}"
+                    },
                     style = MaterialTheme.typography.labelMedium,
-                    color = if (membershipStatus == "MEMBER") NeonCyan else AfroOrange
+                    color = when (membershipStatus) {
+                        "MEMBER" -> NeonCyan
+                        "PENDING" -> AfroGold
+                        else -> AfroOrange
+                    }
                 )
             }
 
-            Button(
-                onClick = onJoinClick,
-                enabled = membershipStatus != "PENDING",
-                modifier = Modifier.height(36.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = buttonColor,
-                    contentColor = if (buttonColor == NeonCyan) Color.Black else Color.White
-                ),
-                shape = RoundedCornerShape(12.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp)
-            ) {
-                Text(buttonText, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Black)
+            if (membershipStatus == "PENDING") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Button(
+                        onClick = {},
+                        enabled = false,
+                        modifier = Modifier.height(36.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            disabledContainerColor = Color(0xFF5C5962),
+                            disabledContentColor = Color.LightGray
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    ) {
+                        Text("EN ATTENTE", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Black)
+                    }
+                    IconButton(
+                        onClick = onCancelJoinClick,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Retirer la demande d'adhésion",
+                            tint = Color(0xFFEF4444)
+                        )
+                    }
+                }
+            } else {
+                Button(
+                    onClick = onJoinClick,
+                    modifier = Modifier.height(36.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = buttonColor,
+                        contentColor = if (buttonColor == NeonCyan) Color.Black else Color.White
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp)
+                ) {
+                    Text(buttonText, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Black)
+                }
             }
         }
     }
 }
 
 @Composable
-fun AdminQuickStats(stats: AdminSignatureStats) {
+fun AdminQuickStats(stats: com.indiza.cotisation.users.AdminSignatureStats) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
@@ -691,7 +829,7 @@ fun EmptyState(query: String) {
         )
         Spacer(modifier = Modifier.height(12.dp))
         Text(
-            text = "Aucun cercle trouvé pour « $query »",
+            text = "Aucune réunion trouvée pour « $query »",
             textAlign = TextAlign.Center,
             style = MaterialTheme.typography.bodyLarge,
             color = Color.White.copy(alpha = 0.7f)

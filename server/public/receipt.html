@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cotisation - Reçu de Paiement</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+    <script src="/js/supabase-config.js"></script>
+    <script src="/js/supabase-client.js"></script>
+    <script src="/js/realtime.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body class="bg-gray-900 text-white min-h-screen p-4 flex items-center justify-center font-sans">
@@ -82,18 +86,18 @@
             if (!txId) return;
 
             try {
-                const res = await fetch(`/transactions/${txId}`);
-                const tx = await res.json();
-
-                // Charger aussi les infos utilisateur
-                const user = JSON.parse(localStorage.getItem('currentUser'));
-                document.getElementById('member-name').innerText = user.nom;
-                document.getElementById('tx-date').innerText = new Date(parseInt(tx.dateTransaction)).toLocaleDateString();
-                document.getElementById('tx-amount').innerText = `${parseInt(tx.montant).toLocaleString()} F`;
+                const { data: tx, error } = await db.from('transactions')
+                    .select('*,caisses(libelle)').eq('id', txId).single();
+                if (error) throw error;
+                const user = await getCurrentUser();
+                const { data: member } = await db.from('members').select('nom_saisi').eq('id', tx.member_id).maybeSingle();
+                document.getElementById('member-name').innerText = member ? member.nom_saisi : (user?.nom || '');
+                document.getElementById('tx-date').innerText = new Date(parseInt(tx.date_transaction, 10)).toLocaleDateString();
+                document.getElementById('tx-amount').innerText = `${parseInt(tx.montant, 10).toLocaleString()} F`;
                 document.getElementById('tx-type').innerText = tx.type;
-                document.getElementById('caisse-name').innerText = tx.Caisse.libelle;
+                document.getElementById('caisse-name').innerText = tx.caisses.libelle;
                 document.getElementById('tx-motif').innerText = tx.motif || 'Aucun motif spécifié';
-                document.getElementById('validator-name').innerText = tx.validator ? tx.validator.nom : 'SYSTÈME AUTOMATISÉ';
+                document.getElementById('validator-name').innerText = tx.validated_by_id === user?.id ? (user.nom || user.email) : 'ADMINISTRATEUR';
 
             } catch (e) { console.error(e); }
         });

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.background
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
@@ -20,6 +21,11 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -299,15 +305,6 @@ fun CaisseConfigScreen(
             )
 
             Spacer(Modifier.height(20.dp))
-            OutlinedTextField(
-                value = draft.dateLimiteJour?.toString() ?: "",
-                onValueChange = { draft = draft.copy(dateLimiteJour = it.toIntOrNull()?.coerceIn(1, 31)) },
-                label = { Text("Jour limite de paiement (1-31)") },
-                placeholder = { Text("Ex: 5 (pour le 5 du mois)") },
-                modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-            )
-            Spacer(Modifier.height(20.dp))
             if (typeInitial == CaisseType.COTISATION_SIMPLE) {
                 Text("Temporalité", color = NeonCyan, style = MaterialTheme.typography.labelMedium)
 
@@ -345,6 +342,33 @@ fun CaisseConfigScreen(
                     }
                 }
             }
+
+            Spacer(Modifier.height(16.dp))
+            if (draft.frequence == FrequenceCotisation.HEBDOMADAIRE) {
+                Text("Échéance Hebdomadaire", color = AfroGold, style = MaterialTheme.typography.labelMedium)
+                Spacer(Modifier.height(4.dp))
+                DayOfWeekSelector(
+                    selectedDay = draft.dateLimiteJour,
+                    onDaySelected = { draft = draft.copy(dateLimiteJour = it) }
+                )
+                Spacer(Modifier.height(8.dp))
+                HourSelector(
+                    selectedHour = draft.heureLimite,
+                    onHourSelected = { draft = draft.copy(heureLimite = it) }
+                )
+            } else if (draft.frequence == FrequenceCotisation.MENSUEL) {
+                Text("Échéance Mensuelle", color = AfroGold, style = MaterialTheme.typography.labelMedium)
+                Spacer(Modifier.height(4.dp))
+                DayOfMonthSelector(
+                    selectedDay = draft.dateLimiteJour,
+                    onDaySelected = { draft = draft.copy(dateLimiteJour = it) }
+                )
+                Spacer(Modifier.height(8.dp))
+                HourSelector(
+                    selectedHour = draft.heureLimite,
+                    onHourSelected = { draft = draft.copy(heureLimite = it) }
+                )
+            }
             Spacer(Modifier.height(20.dp))
 
             Button(
@@ -377,5 +401,147 @@ fun SwitchOption(title: String, subtitle: String, checked: Boolean, enabled: Boo
             Text(subtitle, color = Color.Gray, style = MaterialTheme.typography.bodySmall)
         }
         Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DayOfWeekSelector(
+    selectedDay: Int?,
+    onDaySelected: (Int) -> Unit
+) {
+    val days = listOf(
+        1 to "Lundi",
+        2 to "Mardi",
+        3 to "Mercredi",
+        4 to "Jeudi",
+        5 to "Vendredi",
+        6 to "Samedi",
+        7 to "Dimanche"
+    )
+    var expanded by remember { mutableStateOf(false) }
+    val currentLabel = days.find { it.first == selectedDay }?.second ?: "Choisir le jour"
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded },
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        OutlinedTextField(
+            value = currentLabel,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Jour de la semaine") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White
+            ),
+            modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth()
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.background(Color(0xFF1A1A1A))
+        ) {
+            days.forEach { (value, name) ->
+                DropdownMenuItem(
+                    text = { Text(name, color = Color.White) },
+                    onClick = {
+                        onDaySelected(value)
+                        expanded = false
+                    }
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DayOfMonthSelector(
+    selectedDay: Int?,
+    onDaySelected: (Int) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val currentLabel = selectedDay?.let { "Le $it du mois" } ?: "Choisir le jour du mois"
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded },
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        OutlinedTextField(
+            value = currentLabel,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Jour/Date limite du mois") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White
+            ),
+            modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth()
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.background(Color(0xFF1A1A1A))
+        ) {
+            (1..31).forEach { day ->
+                DropdownMenuItem(
+                    text = { Text("Le $day du mois", color = Color.White) },
+                    onClick = {
+                        onDaySelected(day)
+                        expanded = false
+                    }
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HourSelector(
+    selectedHour: Int?,
+    onHourSelected: (Int) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val currentLabel = selectedHour?.let { String.format("%02dh00", it) } ?: "Choisir l'heure limite"
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded },
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        OutlinedTextField(
+            value = currentLabel,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Heure limite de versement") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White
+            ),
+            modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth()
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.background(Color(0xFF1A1A1A))
+        ) {
+            (0..23).forEach { hour ->
+                val label = String.format("%02dh00", hour)
+                DropdownMenuItem(
+                    text = { Text(label, color = Color.White) },
+                    onClick = {
+                        onHourSelected(hour)
+                        expanded = false
+                    }
+                )
+            }
+        }
     }
 }

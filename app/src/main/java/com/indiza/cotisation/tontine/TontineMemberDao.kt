@@ -10,11 +10,26 @@ import com.indiza.cotisation.users.Role
 import com.indiza.cotisation.users.UserEntity
 import kotlinx.coroutines.flow.Flow
 
+import androidx.room.Update
+
 @Dao
 interface TontineMemberDao {
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertMember(member: TontineMemberEntity)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertMember(member: TontineMemberEntity): Long
+
+    @Update
+    suspend fun updateMember(member: TontineMemberEntity)
+
+    @Transaction
+    suspend fun upsertMember(member: TontineMemberEntity): Long {
+        val id = insertMember(member)
+        if (id == -1L) {
+            updateMember(member)
+            return member.id
+        }
+        return id
+    }
 
     @Query("DELETE FROM tontine_members WHERE tontineId = :tontineId AND userId = :userId")
     suspend fun removeMember(tontineId: Long, userId: String)
@@ -24,6 +39,9 @@ interface TontineMemberDao {
 
     @Query("SELECT * FROM tontine_members WHERE tontineId = :tontineId AND isActive = 1")
     suspend fun getTontineMembers(tontineId: Long): List<TontineMemberEntity>
+
+    @Query("SELECT id FROM tontine_members WHERE tontineId = :tontineId")
+    suspend fun getAllMemberIdsForTontine(tontineId: Long): List<Long>
 
     @Query("SELECT * FROM tontine_members WHERE tontineId = :tontineId AND phone = :phone LIMIT 1")
     suspend fun getMemberByPhone(tontineId: Long, phone: String): TontineMemberEntity?
@@ -127,4 +145,7 @@ interface TontineMemberDao {
 
     @Query("SELECT * FROM tontine_members WHERE tontineId = :tontineId AND remoteId = :remoteId")
     suspend fun getMemberByRemoteId(tontineId: Long, remoteId: String): TontineMemberEntity?
+
+    @Query("UPDATE tontine_members SET remoteId = :remoteId WHERE id = :memberId")
+    suspend fun updateMemberRemoteId(memberId: Long, remoteId: String)
 }

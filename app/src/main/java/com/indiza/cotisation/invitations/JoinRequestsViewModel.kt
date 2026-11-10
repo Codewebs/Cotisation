@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.indiza.cotisation.network.RemoteApi
 import com.indiza.cotisation.tontine.TontineMemberDao
 import com.indiza.cotisation.tontine.TontineMemberWithUser
+import com.indiza.cotisation.users.UserDao
 import com.indiza.cotisation.users.SessionDao
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,7 +27,8 @@ data class JoinRequestsUiState(
 class JoinRequestsViewModel @Inject constructor(
     private val remoteApi: RemoteApi,
     private val memberDao: TontineMemberDao,
-    private val sessionDao: SessionDao
+    private val sessionDao: SessionDao,
+    private val userDao: UserDao
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(JoinRequestsUiState())
@@ -42,11 +44,24 @@ class JoinRequestsViewModel @Inject constructor(
                 val session = sessionDao.getCurrentSession()
                 val role = if (session != null) memberDao.getUserRoleInTontine(tontineId, session.userId) else null
                 
-                val requests = remoteApi.getJoinRequests(tontineId.toString())
+                val rawRequests = remoteApi.getJoinRequests(tontineId.toString())
+                val enrichedRequests = rawRequests.map { req ->
+                    val localUser = userDao.getUserByRemoteId(req.userId) ?: userDao.getUserById(req.userId)
+                    val nom = req.requester.nom.takeIf { it.isNotBlank() && it != "Membre" } ?: localUser?.nom.orEmpty().ifBlank { "Membre" }
+                    val phone = req.requester.phone.ifBlank { localUser?.phone.orEmpty() }
+                    val email = req.requester.email.ifBlank { localUser?.email.orEmpty() }
+                    req.copy(
+                        requester = req.requester.copy(
+                            nom = nom,
+                            phone = phone,
+                            email = email
+                        )
+                    )
+                }
                 val members = memberDao.getTontineMembersWithUsers(tontineId).first()
                 _state.update { it.copy(
                     isLoading = false, 
-                    requests = requests, 
+                    requests = enrichedRequests, 
                     availableMembers = members,
                     currentUserRole = role
                 ) }
@@ -85,7 +100,37 @@ class JoinRequestsViewModel @Inject constructor(
                     throw Exception("Droit de validation hiérarchique : Attendez encore ${remaining}h pour valider.")
                 }
 
-                remoteApi.approveJoinRequest(requestId, session.userId, targetMemberId, updateInfo)
+                val targetRemoteId = if (updateInfo) {
+                    currentState.availableMembers
+                        .firstOrNull { it.member.id == targetMemberId }
+                        ?.member?.remoteId
+                        ?: throw Exception("Le membre sélectionné n'est pas synchronisé")
+                } else {
+                    null
+                }
+                remoteApi.approveJoinRequest(requestId, targetRemoteId)
+                currentTontineId?.let { loadRequests(it) }
+            } catch (e: Exception) {
+                _state.update { it.copy(error = e.message) }
+            }
+        }
+    }
+
+    fun approveSimple(requestId: String) {
+        viewModelScope.launch {
+            try {
+                remoteApi.approveJoinRequest(requestId, null)
+                currentTontineId?.let { loadRequests(it) }
+            } catch (e: Exception) {
+                _state.update { it.copy(error = e.message) }
+            }
+        }
+    }
+
+    fun reject(requestId: String) {
+        viewModelScope.launch {
+            try {
+                remoteApi.rejectJoinRequest(requestId)
                 currentTontineId?.let { loadRequests(it) }
             } catch (e: Exception) {
                 _state.update { it.copy(error = e.message) }

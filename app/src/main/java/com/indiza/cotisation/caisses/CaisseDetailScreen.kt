@@ -32,12 +32,14 @@ import androidx.compose.material.icons.filled.AddCard
 import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.Casino
+import com.indiza.cotisation.users.Role
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.HealthAndSafety
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.PersonRemove
 import androidx.compose.material.icons.filled.PictureAsPdf
@@ -48,6 +50,8 @@ import androidx.compose.material.icons.filled.RemoveCircleOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -56,6 +60,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -74,6 +80,7 @@ import com.indiza.cotisation.tools.NeonCyan
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
@@ -92,6 +99,7 @@ import com.indiza.cotisation.tools.AfroGold
 import com.indiza.cotisation.tools.AfroSunsetGradient
 import com.indiza.cotisation.tools.DeepWhite
 import com.indiza.cotisation.tools.GlassWhite
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -118,6 +126,9 @@ fun CaisseDetailScreen(
     }
 
     var showAddDialog by remember { mutableStateOf(false) }
+    var isSavingParticipants by remember { mutableStateOf(false) }
+    val participantSnackbarState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
     var showConfirmShuffle by remember { mutableStateOf(false) }
     var showActionMenu by remember { mutableStateOf(false) }
     var cycleMenuExpanded by remember { mutableStateOf(false) }
@@ -132,6 +143,7 @@ fun CaisseDetailScreen(
 
     var showDuplicateDialog by remember { mutableStateOf(false) }
     var duplicateCaisseName by remember { mutableStateOf("") }
+    var showMustCloseDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(cycleId) {
         viewModel.selectCycleById(cycleId)
@@ -174,8 +186,9 @@ fun CaisseDetailScreen(
 
     Scaffold(
         containerColor = Color.Transparent,
+        snackbarHost = { SnackbarHost(participantSnackbarState) },
         floatingActionButton = {
-            if (!state.isReadOnly) {
+            if (!state.isReadOnly && state.role != Role.MEMBRE) {
                 val rolesAutorises = listOf(
                     com.indiza.cotisation.users.Role.PRESIDENT,
                     com.indiza.cotisation.users.Role.TRESORIER,
@@ -200,6 +213,9 @@ fun CaisseDetailScreen(
                                     com.indiza.cotisation.CaisseAction.SORTIE -> {
                                         manualMvtType = com.indiza.cotisation.bank.TransactionType.SORTIE
                                         showManualMvtDialog = true
+                                    }
+                                    com.indiza.cotisation.CaisseAction.RELANCE -> {
+                                        // TODO: Implémenter le dialogue de sélection des retardataires
                                     }
                                     else -> {
                                         val currentCycleId = state.currentCycle?.id ?: cycleId
@@ -327,6 +343,26 @@ fun CaisseDetailScreen(
             )
         }
 
+        if (showMustCloseDialog) {
+            AlertDialog(
+                onDismissRequest = { showMustCloseDialog = false },
+                title = { Text("Action requise", color = Color.White, fontWeight = FontWeight.Bold) },
+                containerColor = Color(0xFF1A1E2A),
+                text = {
+                    Text(
+                        "Un cycle est actuellement ouvert. Vous devez impérativement le clôturer avant de pouvoir changer de cycle dans le sélecteur.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = { showMustCloseDialog = false }) {
+                        Text("COMPRIS", color = AfroGold, fontWeight = FontWeight.Bold)
+                    }
+                }
+            )
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -401,11 +437,14 @@ fun CaisseDetailScreen(
                             )
                         }
 
-                        IconButton(
-                            onClick = { showEditCaisse = true },
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Icon(Icons.Default.Settings, "Paramètres", tint = accentColor)
+                        val hideGlobalInfo = state.role == Role.MEMBRE
+                        if (!hideGlobalInfo && state.role != Role.MEMBRE) {
+                            IconButton(
+                                onClick = { showEditCaisse = true },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(Icons.Default.Settings, "Paramètres", tint = accentColor)
+                            }
                         }
                     }
                 }
@@ -413,7 +452,7 @@ fun CaisseDetailScreen(
 
             Spacer(Modifier.height(12.dp))
 
-            if (state.caisse?.type != CaisseType.PRET) {
+            if (state.caisse?.type != CaisseType.PRET && state.role != Role.MEMBRE) {
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -482,7 +521,7 @@ fun CaisseDetailScreen(
                             }
                         }
 
-                        if (!state.isReadOnly || state.peutCloturerTour || state.peutDupliquer) {
+                        if (!state.isReadOnly || state.peutCloturerTour || state.peutDupliquer || (state.currentCycle?.estCloture == true && (state.role == Role.INITIATEUR || state.role == Role.PRESIDENT))) {
                             val currentCycleId = state.currentCycle?.id ?: cycleId
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -490,8 +529,10 @@ fun CaisseDetailScreen(
                             ) {
                                 cycle?.let { cycleEntity ->
                                     if (state.peutCloturerCycle) {
+                                        val hasHigher = state.allCycles.any { it.numeroCycle > cycleEntity.numeroCycle }
+                                        val buttonLabel = if (hasHigher) "Refermer" else "Clôturer Cycle"
                                         AdminButton(
-                                            text = "Clôturer Cycle",
+                                            text = buttonLabel,
                                             color = Color.Red,
                                             icon = Icons.Default.Close,
                                             onClick = {
@@ -499,6 +540,17 @@ fun CaisseDetailScreen(
                                                     caisseId,
                                                     cycleEntity
                                                 )
+                                            }
+                                        )
+                                    }
+
+                                    if (cycleEntity.estCloture && (state.role == Role.INITIATEUR || state.role == Role.PRESIDENT)) {
+                                        AdminButton(
+                                            text = "Réouvrir",
+                                            color = AfroGold,
+                                            icon = Icons.Default.Refresh,
+                                            onClick = {
+                                                transactionViewModel.reouvrirCycle(cycleEntity)
                                             }
                                         )
                                     }
@@ -531,7 +583,7 @@ fun CaisseDetailScreen(
                                     )
                                 }
 
-                                if (state.peutAjouterTour) {
+                                if (state.peutAjouterTour && !(state.tontine?.hideInfoForSimpleMembers == true && state.role == Role.MEMBRE)) {
                                     AdminButton(
                                         text = "Ajouter Tour",
                                         color = AfroGold,
@@ -570,37 +622,167 @@ fun CaisseDetailScreen(
 
                 // 1. En-tête principal
                 item {
-                    CaisseHeader(
-                        caisse = state.caisse,
-                        currentCycle = state.currentCycle,
-                        soldeDuCycle = state.soldeGlobal,
-                        soldePrecedent = state.soldePrecedent,
-                        totalPrets = state.totalPrets,
-                        toursCompletes = state.toursCompletes,
-                        nombreCotisants = state.dejaCotise.size,
-                        nombreBeneficiaires = state.dejaBeneficiaires.size,
-                        prochainBeneficiaire = state.beneficiaireActuel?.memberWithUser?.user?.nom,
-                        totalParticipants = state.participants.size,
-                        montantCible = ((state.caisse?.montantFixe ?: 0L) * state.participants.sumOf { it.nombreParts }.coerceAtLeast(1)) * state.toursDuCycle.size.coerceAtLeast(1),
-                        dateLimitePaiement = state.caisse?.dateLimiteJour,
-                        totalAmendes = state.totalAmendes,
-                        totalPenalites = state.totalPenalites,
-                        montantDistribue = state.montantDistribue,
-                        beneficiaires = state.beneficiairesDuCycle.map { it.member.member.nomSaisi }.distinct(),
-                        montantRecolte = state.montantRecolte,
-                        onReportClick = {
-                            val currentCycle = state.currentCycle
-                            val actualCycleId = currentCycle?.id ?: cycleId
-                            val cycleNum = currentCycle?.numeroCycle ?: 1
-                            navController.navigate("cycle_report/$caisseId/$actualCycleId/$cycleNum")
-                        },
-                        onToggleLock = {
-                            viewModel.toggleOrdreFige()
-                        },
-                        onBalanceClick = {
-                            showBreakdownDialog = true
+                    val hideGlobalInfo = state.role == Role.MEMBRE
+                    if (hideGlobalInfo) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF111827).copy(alpha = 0.85f)),
+                            shape = RoundedCornerShape(18.dp),
+                            border = BorderStroke(1.dp, NeonCyan.copy(alpha = 0.15f))
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = state.caisse?.libelle?.uppercase() ?: "",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = NeonCyan,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Box {
+                                        Surface(
+                                            onClick = { cycleMenuExpanded = !cycleMenuExpanded },
+                                            color = NeonCyan.copy(alpha = 0.2f),
+                                            shape = RoundedCornerShape(8.dp),
+                                            border = BorderStroke(0.5.dp, NeonCyan)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = "CYCLE ${state.currentCycle?.numeroCycle ?: 1}${if (state.currentCycle?.estCloture == true) " (Clôturé)" else ""}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = NeonCyan,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                Spacer(Modifier.width(4.dp))
+                                                Icon(Icons.Default.ExpandMore, null, tint = NeonCyan, modifier = Modifier.size(14.dp))
+                                            }
+                                        }
+
+                                        DropdownMenu(
+                                            expanded = cycleMenuExpanded,
+                                            onDismissRequest = { cycleMenuExpanded = false },
+                                            modifier = Modifier.background(Color(0xFF1A1A1A)).border(1.dp, GlassWhite, RoundedCornerShape(8.dp))
+                                        ) {
+                                            state.allCycles.forEach { cycle ->
+                                                DropdownMenuItem(
+                                                    text = {
+                                                        Text(
+                                                            "Cycle n°${cycle.numeroCycle} ${if (cycle.estCloture) "(Clôturé)" else "(Actif)"}",
+                                                            color = if (cycle.id == state.currentCycle?.id) NeonCyan else Color.White
+                                                        )
+                                                    },
+                                                    onClick = {
+                                                        viewModel.selectCycle(cycle)
+                                                        cycleMenuExpanded = false
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Spacer(Modifier.height(12.dp))
+
+                                Surface(
+                                    color = (if (state.currentMemberHasContributed) Color(0xFF4CAF50) else AfroGold).copy(alpha = 0.15f),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = if (state.currentMemberHasContributed) Icons.Default.CheckCircle else Icons.Default.Refresh,
+                                            contentDescription = null,
+                                            tint = if (state.currentMemberHasContributed) Color(0xFF4CAF50) else AfroGold
+                                        )
+                                        Spacer(Modifier.width(10.dp))
+                                        Text(
+                                            text = if (state.currentMemberHasContributed) "Statut : À jour (Cotisé pour ce cycle)" else "Statut : En attente de cotisation",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = Color.White,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                }
+
+                                Spacer(Modifier.height(14.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    DetailMetricCard(
+                                        modifier = Modifier.weight(1f),
+                                        label = "COTISATION",
+                                        value = state.caisse?.montantFixe?.let { "$it F" } ?: "Libre",
+                                        accentColor = NeonCyan,
+                                        helper = "Tarif Cible"
+                                    )
+                                    DetailMetricCard(
+                                        modifier = Modifier.weight(1f),
+                                        label = "AMENDES",
+                                        value = "${state.caisse?.penaliteRetardFixe ?: 0L} F",
+                                        accentColor = AfroGold,
+                                        helper = "Retard"
+                                    )
+                                    DetailMetricCard(
+                                        modifier = Modifier.weight(1f),
+                                        label = "PÉNALITÉS",
+                                        value = "${state.caisse?.penaliteEchecFixe ?: 0L} F",
+                                        accentColor = Color(0xFFFF7A59),
+                                        helper = "Échec"
+                                    )
+                                    DetailMetricCard(
+                                        modifier = Modifier.weight(1f),
+                                        label = "DATE LIMITE",
+                                        value = state.caisse?.dateLimiteJour?.let { "Jour $it" } ?: "—",
+                                        accentColor = Color(0xFF8BE9FD),
+                                        helper = "Paiement"
+                                    )
+                                }
+                            }
                         }
-                    )
+                    } else {
+                        CaisseHeader(
+                            caisse = state.caisse,
+                            currentCycle = state.currentCycle,
+                            soldeDuCycle = state.soldeGlobal,
+                            soldePrecedent = state.soldePrecedent,
+                            totalPrets = state.totalPrets,
+                            toursCompletes = state.toursCompletes,
+                            nombreCotisants = state.dejaCotise.size,
+                            nombreBeneficiaires = state.dejaBeneficiaires.size,
+                            prochainBeneficiaire = state.beneficiaireActuel?.memberWithUser?.user?.nom,
+                            totalParticipants = state.participants.size,
+                            montantCible = ((state.caisse?.montantFixe ?: 0L) * state.participants.sumOf { it.nombreParts }.coerceAtLeast(1)) * state.toursDuCycle.size.coerceAtLeast(1),
+                            dateLimitePaiement = state.caisse?.dateLimiteJour,
+                            totalAmendes = state.totalAmendes,
+                            totalPenalites = state.totalPenalites,
+                            montantDistribue = state.montantDistribue,
+                            beneficiaires = state.beneficiairesDuCycle.map { it.member.member.nomSaisi }.distinct(),
+                            montantRecolte = state.montantRecolte,
+                            onReportClick = {
+                                val currentCycle = state.currentCycle
+                                val actualCycleId = currentCycle?.id ?: cycleId
+                                val cycleNum = currentCycle?.numeroCycle ?: 1
+                                navController.navigate("cycle_report/$caisseId/$actualCycleId/$cycleNum")
+                            },
+                            onToggleLock = {
+                                viewModel.toggleOrdreFige()
+                            },
+                            onBalanceClick = {
+                                showBreakdownDialog = true
+                            }
+                        )
+                    }
                 }
 
                 // 2. Header Fixe des Participants
@@ -647,7 +829,7 @@ fun CaisseDetailScreen(
                                     }
                                 }
 
-                                if (state.peutAjouterMembres) {
+                                if (state.peutAjouterMembres && state.role != Role.MEMBRE) {
                                     Surface(
                                         onClick = {
                                             navController.navigate(Screen.ManageParticipants.createRoute(caisseId))
@@ -703,6 +885,7 @@ fun CaisseDetailScreen(
                                     isRedistribution = state.caisse?.redistribution ?: false,
                                     aCotiseCeCycle = aCotiseCeCycle,
                                     partsRecuesTotal = partsRecuesCeMembre,
+                                    canReorder = state.role != Role.MEMBRE,
                                     onMoveUp = { if (state.caisse?.ordreFige != true) viewModel.moveParticipant(index, index - 1) },
                                     onMoveDown = { if (state.caisse?.ordreFige != true) viewModel.moveParticipant(index, index + 1) }
                                 )
@@ -754,10 +937,30 @@ fun CaisseDetailScreen(
             AddParticipantsDialog(
                 allTontineMembers = state.allTontineMembers,
                 currentParticipants = state.participants,
-                onToggle = { memberId, isSelected, nbParts ->
-                    viewModel.toggleParticipant(memberId, isSelected, nbParts)
+                canAddMembers = state.peutAjouterMembres && !isSavingParticipants,
+                membersThatCannotBeRemoved = if (isSavingParticipants) {
+                    state.participants.mapTo(mutableSetOf()) { it.member.id }
+                } else {
+                    state.partsEncaisseesMap.filterValues { it > 0 }.keys
                 },
-                onDismiss = { showAddDialog = false }
+                isSaving = isSavingParticipants,
+                onSave = { selectedParts ->
+                    if (!isSavingParticipants) {
+                        coroutineScope.launch {
+                            isSavingParticipants = true
+                            try {
+                                viewModel.saveCaisseParticipantSelection(selectedParts)
+                                showAddDialog = false
+                            } catch (e: Exception) {
+                                participantSnackbarState.showSnackbar(
+                                    e.message ?: "Impossible d'enregistrer les participants."
+                                )
+                            } finally {
+                                isSavingParticipants = false
+                            }
+                        }
+                    }
+                },
             )
         }
 
@@ -1126,6 +1329,11 @@ fun CaisseActionButtons(
                         icon = Icons.Default.Visibility,
                         text = "Voir Ordre Tours",
                         onClick = { onActionSelected(com.indiza.cotisation.CaisseAction.VOIR_TOURS) }
+                    )
+                    ActionButtonItem(
+                        icon = Icons.Default.Notifications,
+                        text = "Relancer les retardataires",
+                        onClick = { onActionSelected(com.indiza.cotisation.CaisseAction.RELANCE) }
                     )
                 }
                 CaisseType.PRET -> {

@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="no-referrer">
+    <title>Cotisation - Suppression du compte</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+    <script src="/js/supabase-config.js"></script>
+    <script src="/js/supabase-client.js"></script>
+</head>
+<body class="min-h-screen bg-gray-950 px-4 py-10 text-white">
+    <main class="mx-auto max-w-xl rounded-2xl border border-gray-700 bg-gray-900 p-6 shadow-2xl sm:p-8">
+        <p class="mb-2 text-sm font-semibold uppercase tracking-widest text-cyan-400">Cotisation</p>
+        <h1 class="text-3xl font-bold">Suppression du compte</h1>
+        <p class="mt-3 text-gray-300">
+            Cette page vous permet de demander la suppression définitive du compte associé à votre application.
+        </p>
+
+        <div id="page-error" class="mt-6 hidden rounded-lg border border-red-800 bg-red-950 p-4 text-red-200"
+            role="alert"></div>
+        <div id="message" class="mt-6 hidden rounded-lg p-4 text-sm" role="status" aria-live="polite"></div>
+
+        <form id="login-form" class="mt-8 space-y-5">
+            <div>
+                <label for="email" class="mb-1 block text-sm font-medium text-gray-200">E-mail du compte</label>
+                <input id="email" type="email" autocomplete="username" required
+                    class="w-full rounded-lg border border-gray-600 bg-gray-800 px-4 py-3 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                    placeholder="vous@exemple.com">
+            </div>
+            <div>
+                <label for="password" class="mb-1 block text-sm font-medium text-gray-200">Mot de passe</label>
+                <input id="password" type="password" autocomplete="current-password" required
+                    class="w-full rounded-lg border border-gray-600 bg-gray-800 px-4 py-3 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500">
+            </div>
+            <button id="verify-button" type="submit"
+                class="w-full rounded-lg bg-cyan-400 px-4 py-3 font-bold text-gray-950 hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50">
+                Vérifier mon compte
+            </button>
+        </form>
+
+        <section id="confirmation" class="mt-8 hidden" aria-labelledby="warning-title">
+            <div class="rounded-xl border border-red-700 bg-red-950/60 p-5">
+                <h2 id="warning-title" class="text-lg font-bold text-red-200">Attention : action irréversible</h2>
+                <p class="mt-3 text-sm leading-6 text-red-100">
+                    La suppression effacera votre compte, votre profil, vos coordonnées, vos commentaires,
+                    vos notifications, vos demandes et vos invitations ainsi que les images que vous avez envoyées.
+                    Votre identité sera retirée des listes de membres.
+                </p>
+                <p class="mt-3 text-sm leading-6 text-red-100">
+                    Pour préserver les comptes des tontines, les historiques financiers partagés (cotisations,
+                    prêts et opérations) ne seront pas supprimés : ils seront conservés sans rattachement à votre
+                    identité. Vous ne pourrez plus vous connecter ni récupérer votre compte.
+                </p>
+                <p id="account-email" class="mt-4 break-all text-sm font-semibold text-white"></p>
+            </div>
+
+            <label class="mt-5 flex items-start gap-3 text-sm text-gray-200">
+                <input id="confirm-checkbox" type="checkbox"
+                    class="mt-1 h-4 w-4 rounded border-gray-600 bg-gray-800 text-red-500 focus:ring-red-500">
+                <span>Je comprends que la suppression de mon compte et de mes données personnelles est définitive.</span>
+            </label>
+
+            <label for="confirm-word" class="mb-1 mt-5 block text-sm font-medium text-gray-200">
+                Saisissez <strong class="text-red-300">SUPPRIMER</strong> pour confirmer
+            </label>
+            <input id="confirm-word" type="text" autocomplete="off" spellcheck="false"
+                class="w-full rounded-lg border border-gray-600 bg-gray-800 px-4 py-3 focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-500">
+
+            <div class="mt-6 grid gap-3 sm:grid-cols-2">
+                <button id="cancel-button" type="button"
+                    class="rounded-lg border border-gray-600 px-4 py-3 font-semibold text-gray-200 hover:bg-gray-800">
+                    Annuler
+                </button>
+                <button id="delete-button" type="button" disabled
+                    class="rounded-lg bg-red-700 px-4 py-3 font-bold text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50">
+                    Supprimer définitivement
+                </button>
+            </div>
+        </section>
+
+        <section id="success" class="mt-8 hidden rounded-xl border border-green-800 bg-green-950/50 p-5"
+            role="status">
+            <h2 class="text-lg font-bold text-green-300">Compte supprimé</h2>
+            <p class="mt-2 text-sm leading-6 text-green-100">
+                Votre compte et vos données personnelles ont été supprimés. Les historiques financiers partagés
+                ont été conservés sous une forme anonymisée.
+            </p>
+        </section>
+    </main>
+
+    <script>
+        (function () {
+            const userId = new URLSearchParams(window.location.search).get('id');
+            const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+            const pageError = document.getElementById('page-error');
+            const message = document.getElementById('message');
+            const loginForm = document.getElementById('login-form');
+            const confirmation = document.getElementById('confirmation');
+            const confirmationWord = document.getElementById('confirm-word');
+            const confirmCheckbox = document.getElementById('confirm-checkbox');
+            const deleteButton = document.getElementById('delete-button');
+            let authenticatedUser = null;
+
+            function showMessage(text, isError) {
+                message.textContent = text;
+                message.className = 'mt-6 rounded-lg p-4 text-sm ' +
+                    (isError ? 'bg-red-950 text-red-200' : 'bg-green-950 text-green-200');
+            }
+
+            function updateDeleteButton() {
+                deleteButton.disabled = !confirmCheckbox.checked ||
+                    confirmationWord.value.trim() !== 'SUPPRIMER';
+            }
+
+            if (!uuidPattern.test(userId || '')) {
+                pageError.textContent = "Le lien de suppression est invalide. Revenez dans l'application pour en générer un nouveau.";
+                pageError.classList.remove('hidden');
+                loginForm.classList.add('hidden');
+                return;
+            }
+
+            loginForm.addEventListener('submit', async function (event) {
+                event.preventDefault();
+                const verifyButton = document.getElementById('verify-button');
+                verifyButton.disabled = true;
+                message.classList.add('hidden');
+                try {
+                    const { data, error } = await db.auth.signInWithPassword({
+                        email: document.getElementById('email').value.trim(),
+                        password: document.getElementById('password').value
+                    });
+                    if (error) throw error;
+
+                    if (!data.user || data.user.id.toLowerCase() !== userId.toLowerCase()) {
+                        try {
+                            const { error: signOutError } = await db.auth.signOut({ scope: 'local' });
+                            if (signOutError) console.error('Could not clear the local session:', signOutError);
+                        } catch (signOutError) {
+                            console.error('Could not clear the local session:', signOutError);
+                        }
+                        throw new Error("Ces identifiants ne correspondent pas au compte transmis par l'application.");
+                    }
+
+                    authenticatedUser = data.user;
+                    document.getElementById('account-email').textContent =
+                        'Compte concerné : ' + (data.user.email || 'adresse non disponible');
+                    loginForm.classList.add('hidden');
+                    confirmation.classList.remove('hidden');
+                    confirmCheckbox.addEventListener('change', updateDeleteButton);
+                    confirmationWord.addEventListener('input', updateDeleteButton);
+                } catch (error) {
+                    showMessage(error.message || "Impossible de vérifier le compte.", true);
+                } finally {
+                    verifyButton.disabled = false;
+                }
+            });
+
+            document.getElementById('cancel-button').addEventListener('click', async function () {
+                const cancelButton = document.getElementById('cancel-button');
+                cancelButton.disabled = true;
+                try {
+                    const { error } = await db.auth.signOut({ scope: 'local' });
+                    if (error) throw error;
+                    authenticatedUser = null;
+                    confirmation.classList.add('hidden');
+                    loginForm.reset();
+                    confirmationWord.value = '';
+                    confirmCheckbox.checked = false;
+                    loginForm.classList.remove('hidden');
+                    message.classList.add('hidden');
+                } catch (error) {
+                    showMessage(error.message || "Impossible d'annuler la vérification.", true);
+                } finally {
+                    cancelButton.disabled = false;
+                    updateDeleteButton();
+                }
+            });
+
+            deleteButton.addEventListener('click', async function () {
+                if (!authenticatedUser || authenticatedUser.id.toLowerCase() !== userId.toLowerCase()) {
+                    showMessage("La session a expiré. Vérifiez à nouveau votre compte.", true);
+                    confirmation.classList.add('hidden');
+                    loginForm.classList.remove('hidden');
+                    return;
+                }
+
+                deleteButton.disabled = true;
+                document.getElementById('cancel-button').disabled = true;
+                showMessage("Suppression en cours. Ne fermez pas cette page.", false);
+                try {
+                    const { error } = await db.functions.invoke('delete-account', {
+                        body: { userId: authenticatedUser.id }
+                    });
+                    if (error) throw error;
+
+                    await db.auth.signOut({ scope: 'local' });
+                    confirmation.classList.add('hidden');
+                    message.classList.add('hidden');
+                    document.getElementById('success').classList.remove('hidden');
+                } catch (error) {
+                    showMessage(error.message || "La suppression a échoué. Réessayez ou contactez l'assistance.", true);
+                    updateDeleteButton();
+                    document.getElementById('cancel-button').disabled = false;
+                }
+            });
+        })();
+    </script>
+</body>
+</html>

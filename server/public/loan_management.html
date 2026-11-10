@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cotisation - Gestion des Prêts</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+    <script src="/js/supabase-config.js"></script>
+    <script src="/js/supabase-client.js"></script>
+    <script src="/js/realtime.js"></script>
     <style>
         .glass { background: rgba(17, 24, 39, 0.85); backdrop-filter: blur(10px); }
     </style>
@@ -65,8 +69,16 @@
 
         async function fetchLoans() {
             try {
-                const res = await fetch(`/tontines/${tontineId}/prets`);
-                const loans = await res.json();
+                const { data: caisses, error: caisseError } = await db.from('caisses')
+                    .select('id').eq('tontine_id', tontineId);
+                if (caisseError) throw caisseError;
+                const caisseIds = caisses.map(caisse => caisse.id);
+                let loans = [];
+                if (caisseIds.length) {
+                    const { data, error } = await db.from('prets').select('*').in('caisse_id', caisseIds);
+                    if (error) throw error;
+                    loans = data;
+                }
 
                 const list = document.getElementById('loan-list');
                 const empty = document.getElementById('empty-state');
@@ -81,13 +93,14 @@
                 let pending = 0;
 
                 // Charger les membres pour les noms
-                const tRes = await fetch(`/tontines/${tontineId}`);
-                const tontine = await tRes.json();
+                const { data: members, error: memberError } = await db.from('members')
+                    .select('id,nom_saisi').eq('tontine_id', tontineId);
+                if (memberError) throw memberError;
                 const membersMap = {};
-                tontine.members.forEach(m => membersMap[m.id] = m.nomSaisi);
+                members.forEach(m => membersMap[m.id] = m.nom_saisi);
 
                 loans.forEach(l => {
-                    if (l.statut === 'ACTIF') totalEncours += parseInt(l.montantRestant);
+                    if (l.statut === 'ACTIF') totalEncours += parseInt(l.montant_restant || l.montant_principal, 10);
                     if (l.statut === 'PENDING') pending++;
 
                     const card = document.createElement('div');
@@ -102,21 +115,21 @@
                     card.innerHTML = `
                         <div class="flex items-center gap-4 flex-1">
                             <div class="w-12 h-12 bg-gray-700 rounded-2xl flex items-center justify-center font-black text-cyan-400 border border-cyan-500/10">
-                                ${(membersMap[l.memberId] || l.nomEmprunteurExterne || '?').charAt(0).toUpperCase()}
+                                ${escapeHtml((membersMap[l.member_id] || l.nom_emprunteur_externe || '?').charAt(0).toUpperCase())}
                             </div>
                             <div>
-                                <h3 class="font-black text-white uppercase tracking-tight">${membersMap[l.memberId] || l.nomEmprunteurExterne || 'Inconnu'}</h3>
-                                <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Échéance: ${new Date(parseInt(l.dateEcheance)).toLocaleDateString()}</p>
+                                <h3 class="font-black text-white uppercase tracking-tight">${escapeHtml(membersMap[l.member_id] || l.nom_emprunteur_externe || 'Inconnu')}</h3>
+                                <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Échéance: ${l.date_echeance ? new Date(parseInt(l.date_echeance, 10)).toLocaleDateString() : '—'}</p>
                             </div>
                         </div>
 
                         <div class="text-center md:text-right">
-                            <p class="text-xl font-black text-white">${parseInt(l.montantPrincipal).toLocaleString()} F</p>
-                            <p class="text-[10px] font-bold text-gray-500 uppercase">Intérêt: ${l.tauxInteret}%</p>
+                            <p class="text-xl font-black text-white">${parseInt(l.montant_principal, 10).toLocaleString()} F</p>
+                            <p class="text-[10px] font-bold text-gray-500 uppercase">Intérêt: ${l.taux_interet}%</p>
                         </div>
 
                         <div class="flex items-center gap-4">
-                            <span class="${statusColors[l.statut]} px-3 py-1 rounded-full text-[10px] font-black border uppercase tracking-widest">${l.statut}</span>
+                            <span class="${statusColors[l.statut] || 'bg-gray-700 text-gray-300 border-gray-600'} px-3 py-1 rounded-full text-[10px] font-black border uppercase tracking-widest">${escapeHtml(l.statut)}</span>
                             ${l.statut === 'PENDING' ? `
                                 <button onclick="approveLoan('${l.id}')" class="bg-cyan-500 hover:bg-cyan-600 text-gray-900 px-4 py-2 rounded-xl text-[10px] font-black transition">VALIDER</button>
                             ` : ''}
@@ -135,21 +148,14 @@
         }
 
         async function approveLoan(id) {
-            const user = JSON.parse(localStorage.getItem('currentUser'));
             try {
-                const res = await fetch(`/prets/${id}/approve`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ adminUserId: user.id })
+                const { error } = await db.rpc('approve_tontine_loan', {
+                    p_loan_id: id
                 });
-                if (res.ok) {
-                    alert("Prêt validé et décaissé !");
-                    fetchLoans();
-                } else {
-                    const err = await res.json();
-                    alert(err.error);
-                }
-            } catch (e) { alert("Erreur réseau"); }
+                if (error) throw error;
+                alert("Prêt validé.");
+                fetchLoans();
+            } catch (e) { alert(e.message || "Erreur lors de la validation"); }
         }
     </script>
 </body>

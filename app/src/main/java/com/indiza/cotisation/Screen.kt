@@ -57,4 +57,4 @@ sealed class Screen(val route: String) {
     object Profile : Screen("profile")
 }
 
-enum class CaisseAction { COTISATION, PRET, REMBOURSEMENT, SORTIE_SECOURS, TOUR_ENCAISSER, SORTIE, TRANSFERT_ENTREE, VOIR_TOURS }
+enum class CaisseAction { COTISATION, PRET, REMBOURSEMENT, SORTIE_SECOURS, TOUR_ENCAISSER, SORTIE, TRANSFERT_ENTREE, VOIR_TOURS, RELANCE }

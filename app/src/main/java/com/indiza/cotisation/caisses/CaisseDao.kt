@@ -24,6 +24,9 @@ interface CaisseDao {
     @Query("SELECT * FROM caisses WHERE tontineId = :tontineId ORDER BY libelle ASC")
     fun getCaissesByTontine(tontineId: Long): Flow<List<CaisseEntity>>
 
+    @Query("SELECT * FROM caisses WHERE tontineId = :tontineId ORDER BY libelle ASC")
+    suspend fun getCaissesByTontineSnapshot(tontineId: Long): List<CaisseEntity>
+
     // Récupérer une caisse précise par son ID
     @Query("SELECT * FROM caisses WHERE id = :caisseId")
     suspend fun getCaisseById(caisseId: Long): CaisseEntity?

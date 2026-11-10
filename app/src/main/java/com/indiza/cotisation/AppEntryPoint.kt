@@ -20,6 +20,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -80,7 +81,11 @@ import kotlinx.coroutines.launch
 
 
 @Composable
-fun AppEntryPoint(connectivityObserver: ConnectivityObserver) {
+fun AppEntryPoint(
+    connectivityObserver: ConnectivityObserver,
+    notificationReceiptId: String? = null,
+    onNotificationReceiptHandled: () -> Unit = {}
+) {
     val navController = rememberNavController()
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("cotisation_prefs", Context.MODE_PRIVATE) }
@@ -95,6 +100,15 @@ fun AppEntryPoint(connectivityObserver: ConnectivityObserver) {
     val startDestination = when {
         !prefs.getBoolean("guide_seen", false) -> Screen.Onboarding.route
         else -> Screen.SearchTontine.route
+    }
+
+    LaunchedEffect(notificationReceiptId) {
+        val transactionId = notificationReceiptId?.takeIf(String::isNotBlank)
+            ?: return@LaunchedEffect
+        navController.navigate("receipt/$transactionId") {
+            launchSingleTop = true
+        }
+        onNotificationReceiptHandled()
     }
 
     CosmicBackground {
@@ -162,7 +176,7 @@ fun AppEntryPoint(connectivityObserver: ConnectivityObserver) {
                     },
                     onJoinTontine = { tontine ->
                         if (hasSession) {
-                            joinTontine(tontine)
+                            navController.navigate(Screen.TontineDetail.createRoute(tontine.id))
                         } else {
                             pendingJoinTontine = tontine
                             navController.navigate(Screen.Auth.route)
@@ -651,9 +665,7 @@ fun AppEntryPoint(connectivityObserver: ConnectivityObserver) {
                 route = Screen.JoinInvitation.route,
                 arguments = listOf(navArgument("code") { type = NavType.StringType }),
                 deepLinks = listOf(
-                    androidx.navigation.navDeepLink { uriPattern = "cotisation://join?code={code}" },
-                    androidx.navigation.navDeepLink { uriPattern = "http://10.0.2.2:3000/join?code={code}" },
-                    androidx.navigation.navDeepLink { uriPattern = "http://192.168.1.50:3000/join?code={code}" }
+                    androidx.navigation.navDeepLink { uriPattern = "cotisation://join?code={code}" }
                 )
             ) { backStackEntry ->
                 val code = backStackEntry.arguments?.getString("code") ?: ""
@@ -730,11 +742,6 @@ fun AppEntryPoint(connectivityObserver: ConnectivityObserver) {
         }
     }
 }
-private fun joinTontine(tontine: TontineEntity) {
-    // Implémentez une logique de demande d'adhésion ici
-    // Par exemple : envoyer une requête API, mettre à jour la base locale, etc.
-    println("Demande d'adhésion à: ${tontine.libelle}")
-}
 
 @OptIn(ExperimentalFoundationApi::class) // Utilisation du Pager natif
 @Composable
@@ -806,4 +813,3 @@ fun PageContent(title: String, description: String) {
         Text(description, style = MaterialTheme.typography.bodyLarge)
     }
 }
-

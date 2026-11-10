@@ -1,28 +1,24 @@
-# Cotisation Mock Server
+# Cotisation web client
 
-Simple Node.js server to support the development of the Cotisation Android app.
+The Node.js process only serves the static web client. Authentication, database
+access, realtime subscriptions, and image storage are provided directly by
+Supabase; this process does not connect to MySQL or run a WebSocket server.
 
 ## Setup
 
-1. Make sure you have [Node.js](https://nodejs.org/) installed.
-2. Navigate to this directory in your terminal.
-3. Install dependencies:
+1. Follow [the Supabase setup guide](../supabase/README.md) and apply the SQL
+   migration in `../supabase/migrations/`.
+2. Configure the Supabase project URL and public anon/publishable key using the
+   web client's local configuration instructions.
+3. Install and start the static web server:
+
    ```bash
    npm install
+   npm start
    ```
 
-## Running the Server
+The site is served at `http://localhost:3000`. To host it elsewhere, serve the
+`public/` directory and configure its client-side Supabase settings there.
 
-Start the server with:
-```bash
-npm start
-```
-The server will be available at `http://localhost:3000`.
-
-## Android App Configuration
-
-To connect the Android app to this local server:
-1. Find your computer's local IP address (e.g., `192.168.1.x`).
-2. Open `app/src/main/java/com/indiza/cotisation/network/NetworkModule.kt`.
-3. Change `BASE_URL` to `http://<YOUR_IP>:3000/`.
-4. Ensure your Android device/emulator is on the same network.
+Only the project's public anon/publishable key may be used in browser code.
+Never put a `service_role` key in this directory.

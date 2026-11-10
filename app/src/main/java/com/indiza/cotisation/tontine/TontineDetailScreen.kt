@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.PieChart
 import androidx.compose.material.icons.filled.TableChart
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -170,6 +171,9 @@ fun TontineDetailScreen(
             }
             is TontineDetailUiState.Success -> {
                 val tontine = uiState.tontineWithCaisses.tontine
+                val isSimpleMember = (uiState.role == Role.MEMBRE && !uiState.isInitiator)
+                val hideGlobalInfo = isSimpleMember
+
                 Scaffold(
                     containerColor = MaterialTheme.colorScheme.background,
                     floatingActionButton = {
@@ -185,13 +189,15 @@ fun TontineDetailScreen(
                                 Spacer(modifier = Modifier.height(16.dp))
                             }
                             
-                            ExtendedFloatingActionButton(
-                                onClick = { showAddMemberDialog = true },
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary,
-                                icon = { Icon(Icons.Default.PersonAdd, null) },
-                                text = { Text("Ajouter Membre") }
-                            )
+                            if (!hideGlobalInfo) {
+                                ExtendedFloatingActionButton(
+                                    onClick = { showAddMemberDialog = true },
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                                    icon = { Icon(Icons.Default.PersonAdd, null) },
+                                    text = { Text("Ajouter Membre") }
+                                )
+                            }
                         }
                     }
                 ) { padding ->
@@ -250,18 +256,34 @@ fun TontineDetailScreen(
 
                                 if (tontine.isOnline) {
                                     Surface(
+                                        onClick = {
+                                            viewModel.refreshLiveTontine(tontineId) { msg ->
+                                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                            }
+                                        },
                                         color = Color(0xFFE0F7FA),
                                         shape = RoundedCornerShape(4.dp),
                                         border = BorderStroke(0.5.dp, Color(0xFF00BCD4))
                                     ) {
-                                        Text(
-                                            "LIVE",
-                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = Color(0xFF0097A7),
-                                            fontSize = 8.sp,
-                                            fontWeight = FontWeight.ExtraBold
-                                        )
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                "LIVE",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = Color(0xFF0097A7),
+                                                fontSize = 8.sp,
+                                                fontWeight = FontWeight.ExtraBold
+                                            )
+                                            Spacer(Modifier.width(2.dp))
+                                            Icon(
+                                                Icons.Default.Refresh,
+                                                contentDescription = "Actualiser",
+                                                tint = Color(0xFF0097A7),
+                                                modifier = Modifier.size(10.dp)
+                                            )
+                                        }
                                     }
                                 } else {
                                     // Option Passer en ligne
@@ -296,28 +318,30 @@ fun TontineDetailScreen(
 
                                 Spacer(modifier = Modifier.width(8.dp))
 
-                                IconButton(
-                                    onClick = { onEditTontine(tontineId) },
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Settings,
-                                        contentDescription = "Paramètres",
-                                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
+                                if (!hideGlobalInfo) {
+                                    IconButton(
+                                        onClick = { onEditTontine(tontineId) },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Settings,
+                                            contentDescription = "Paramètres",
+                                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
 
-                                IconButton(
-                                    onClick = { showReportSheet = true },
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.TableChart,
-                                        contentDescription = "Fiche de Cotisation",
-                                        tint = AfroGold,
-                                        modifier = Modifier.size(20.dp)
-                                    )
+                                    IconButton(
+                                        onClick = { showReportSheet = true },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.TableChart,
+                                            contentDescription = "Fiche de Cotisation",
+                                            tint = AfroGold,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
                                 }
 
                                 IconButton(
@@ -337,7 +361,18 @@ fun TontineDetailScreen(
                                 }
 
                                 IconButton(
-                                    onClick = { navController.navigate("meeting_chat/$tontineId") },
+                                    onClick = {
+                                        val remoteTontineId = uiState.tontineWithCaisses.tontine.remoteId
+                                        if (remoteTontineId.isNullOrBlank()) {
+                                            Toast.makeText(
+                                                context,
+                                                "Le chat est disponible lorsque la réunion est synchronisée.",
+                                                Toast.LENGTH_LONG
+                                            ).show()
+                                        } else {
+                                            navController.navigate("meeting_chat/$remoteTontineId")
+                                        }
+                                    },
                                     modifier = Modifier.size(32.dp)
                                 ) {
                                     Icon(
@@ -352,114 +387,116 @@ fun TontineDetailScreen(
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // --- STATISTIQUES COMPACTES ---
-                        var expandedStat by remember { mutableStateOf<TontineStatType?>(null) }
+                        if (!hideGlobalInfo) {
+                            // --- STATISTIQUES COMPACTES ---
+                            var expandedStat by remember { mutableStateOf<TontineStatType?>(null) }
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            StatTile(
-                                modifier = Modifier.weight(1f),
-                                icon = Icons.Default.MonetizationOn,
-                                label = "Finance",
-                                isSelected = expandedStat == TontineStatType.FINANCIAL,
-                                onClick = { expandedStat = if (expandedStat == TontineStatType.FINANCIAL) null else TontineStatType.FINANCIAL }
-                            )
-                            StatTile(
-                                modifier = Modifier.weight(1f),
-                                icon = Icons.AutoMirrored.Filled.ShowChart,
-                                label = "Évolution",
-                                isSelected = expandedStat == TontineStatType.GROWTH,
-                                onClick = { expandedStat = if (expandedStat == TontineStatType.GROWTH) null else TontineStatType.GROWTH }
-                            )
-                            StatTile(
-                                modifier = Modifier.weight(1f),
-                                icon = Icons.Default.PieChart,
-                                label = "Revenus",
-                                isSelected = expandedStat == TontineStatType.INCOME,
-                                onClick = { expandedStat = if (expandedStat == TontineStatType.INCOME) null else TontineStatType.INCOME }
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        AnimatedVisibility(
-                            visible = expandedStat == TontineStatType.FINANCIAL,
-                            enter = expandVertically(),
-                            exit = shrinkVertically()
-                        ) {
-                            TontineFinancialSummaryBlock(uiState.financialSummary)
-                        }
-
-                        AnimatedVisibility(
-                            visible = expandedStat == TontineStatType.GROWTH,
-                            enter = expandVertically(),
-                            exit = shrinkVertically()
-                        ) {
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFF111827).copy(alpha = 0.4f)),
-                                shape = RoundedCornerShape(16.dp),
-                                border = BorderStroke(0.5.dp, Color.White.copy(alpha = 0.1f))
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Column(Modifier.padding(16.dp)) {
-                                    Text("CROISSANCE TRÉSORERIE", style = MaterialTheme.typography.labelSmall, color = Color.Gray, fontWeight = FontWeight.Bold)
-                                    Spacer(Modifier.height(12.dp))
-                                    com.indiza.cotisation.tools.GrowthLineChart(
-                                        data = uiState.growthStats,
-                                        modifier = Modifier.fillMaxWidth().height(120.dp)
-                                    )
+                                StatTile(
+                                    modifier = Modifier.weight(1f),
+                                    icon = Icons.Default.MonetizationOn,
+                                    label = "Finance",
+                                    isSelected = expandedStat == TontineStatType.FINANCIAL,
+                                    onClick = { expandedStat = if (expandedStat == TontineStatType.FINANCIAL) null else TontineStatType.FINANCIAL }
+                                )
+                                StatTile(
+                                    modifier = Modifier.weight(1f),
+                                    icon = Icons.AutoMirrored.Filled.ShowChart,
+                                    label = "Évolution",
+                                    isSelected = expandedStat == TontineStatType.GROWTH,
+                                    onClick = { expandedStat = if (expandedStat == TontineStatType.GROWTH) null else TontineStatType.GROWTH }
+                                )
+                                StatTile(
+                                    modifier = Modifier.weight(1f),
+                                    icon = Icons.Default.PieChart,
+                                    label = "Revenus",
+                                    isSelected = expandedStat == TontineStatType.INCOME,
+                                    onClick = { expandedStat = if (expandedStat == TontineStatType.INCOME) null else TontineStatType.INCOME }
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            AnimatedVisibility(
+                                visible = expandedStat == TontineStatType.FINANCIAL,
+                                enter = expandVertically(),
+                                exit = shrinkVertically()
+                            ) {
+                                TontineFinancialSummaryBlock(uiState.financialSummary)
+                            }
+
+                            AnimatedVisibility(
+                                visible = expandedStat == TontineStatType.GROWTH,
+                                enter = expandVertically(),
+                                exit = shrinkVertically()
+                            ) {
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(containerColor = Color(0xFF111827).copy(alpha = 0.4f)),
+                                    shape = RoundedCornerShape(16.dp),
+                                    border = BorderStroke(0.5.dp, Color.White.copy(alpha = 0.1f))
+                                ) {
+                                    Column(Modifier.padding(16.dp)) {
+                                        Text("CROISSANCE TRÉSORERIE", style = MaterialTheme.typography.labelSmall, color = Color.Gray, fontWeight = FontWeight.Bold)
+                                        Spacer(Modifier.height(12.dp))
+                                        com.indiza.cotisation.tools.GrowthLineChart(
+                                            data = uiState.growthStats,
+                                            modifier = Modifier.fillMaxWidth().height(120.dp)
+                                        )
+                                    }
                                 }
                             }
-                        }
 
-                        AnimatedVisibility(
-                            visible = expandedStat == TontineStatType.INCOME,
-                            enter = expandVertically(),
-                            exit = shrinkVertically()
-                        ) {
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFF111827).copy(alpha = 0.4f)),
-                                shape = RoundedCornerShape(16.dp),
-                                border = BorderStroke(0.5.dp, Color.White.copy(alpha = 0.1f))
+                            AnimatedVisibility(
+                                visible = expandedStat == TontineStatType.INCOME,
+                                enter = expandVertically(),
+                                exit = shrinkVertically()
                             ) {
-                                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text("RÉPARTITION DES REVENUS", style = MaterialTheme.typography.labelSmall, color = Color.Gray, fontWeight = FontWeight.Bold)
-                                        Spacer(Modifier.height(8.dp))
-                                        uiState.incomeStats.forEachIndexed { index, stats ->
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Box(Modifier.size(8.dp).background(
-                                                    listOf(NeonCyan, AfroOrange, Color(0xFF50FA7B), Color(0xFFA855F7), Color(0xFFFF5555))[index % 5],
-                                                    CircleShape
-                                                ))
-                                                Spacer(Modifier.width(8.dp))
-                                                Text("${stats.type}: ${stats.total} F", style = MaterialTheme.typography.labelSmall, color = Color.LightGray)
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(containerColor = Color(0xFF111827).copy(alpha = 0.4f)),
+                                    shape = RoundedCornerShape(16.dp),
+                                    border = BorderStroke(0.5.dp, Color.White.copy(alpha = 0.1f))
+                                ) {
+                                    Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text("RÉPARTITION DES REVENUS", style = MaterialTheme.typography.labelSmall, color = Color.Gray, fontWeight = FontWeight.Bold)
+                                            Spacer(Modifier.height(8.dp))
+                                            uiState.incomeStats.forEachIndexed { index, stats ->
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Box(Modifier.size(8.dp).background(
+                                                        listOf(NeonCyan, AfroOrange, Color(0xFF50FA7B), Color(0xFFA855F7), Color(0xFFFF5555))[index % 5],
+                                                        CircleShape
+                                                    ))
+                                                    Spacer(Modifier.width(8.dp))
+                                                    Text("${stats.type}: ${stats.total} F", style = MaterialTheme.typography.labelSmall, color = Color.LightGray)
+                                                }
                                             }
                                         }
+                                        com.indiza.cotisation.tools.IncomeDistributionChart(
+                                            data = uiState.incomeStats,
+                                            modifier = Modifier.size(80.dp)
+                                        )
                                     }
-                                    com.indiza.cotisation.tools.IncomeDistributionChart(
-                                        data = uiState.incomeStats,
-                                        modifier = Modifier.size(80.dp)
-                                    )
                                 }
                             }
-                        }
 
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        // --- ADMINISTRATION (INVITATIONS & DEMANDES) ---
-                        if (uiState.role != Role.MEMBRE || uiState.isInitiator) {
-                            AdminActionsRow(
-                                tontineId = tontineId,
-                                viewModel = viewModel,
-                                onNavigateToRequests = { 
-                                    navController.navigate("join_requests/$tontineId")
-                                }
-                            )
                             Spacer(modifier = Modifier.height(16.dp))
+
+                            // --- ADMINISTRATION (INVITATIONS & DEMANDES) ---
+                            if (uiState.role != Role.MEMBRE || uiState.isInitiator) {
+                                AdminActionsRow(
+                                    tontineId = tontineId,
+                                    viewModel = viewModel,
+                                    onNavigateToRequests = { 
+                                        navController.navigate("join_requests/$tontineId")
+                                    }
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                            }
                         }
                         
                         QuickActionsRow(uiState.role)
@@ -499,7 +536,7 @@ fun TontineDetailScreen(
                                 uiState.caissesWithCycles.groupBy { it.caisse.type }.forEach { (type, items) ->
                                     Text(text = type.name, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
                                     items.forEach { item -> 
-                                        CaisseItemRow(item, viewModel, onCaisseClick) { id ->
+                                        CaisseItemRow(item, viewModel, isSimpleMember, onCaisseClick) { id ->
                                             viewModel.deleteCaisse(id) { result ->
                                                 result.onFailure { Toast.makeText(context, it.message, Toast.LENGTH_SHORT).show() }
                                             }
@@ -508,7 +545,7 @@ fun TontineDetailScreen(
                                 }
                             }
                             else -> uiState.caissesWithCycles.forEach { item -> 
-                                CaisseItemRow(item, viewModel, onCaisseClick) { id ->
+                                CaisseItemRow(item, viewModel, isSimpleMember, onCaisseClick) { id ->
                                     viewModel.deleteCaisse(id) { result ->
                                         result.onFailure { Toast.makeText(context, it.message, Toast.LENGTH_SHORT).show() }
                                     }
@@ -746,13 +783,15 @@ fun SummaryItem(modifier: Modifier, label: String, value: String, color: Color) 
 fun CaisseItemRow(
     item: com.indiza.cotisation.caisses.CaisseWithActiveCycle,
     viewModel: TontineDetailViewModel,
+    isSimpleMember: Boolean,
     onCaisseClick: (Long, Long) -> Unit,
     onDelete: (Long) -> Unit
 ) {
-    val solde = viewModel.getCaisseSolde(item.caisse.id).collectAsState(initial = 0L).value
+    val solde = if (isSimpleMember) 0L else (viewModel.getCaisseSolde(item.caisse.id).collectAsState(initial = 0L).value ?: 0L)
     CaisseDetailCard(
         caisse = item.caisse,
-        soldeGlobal = solde ?: 0L,
+        soldeGlobal = solde,
+        showSolde = !isSimpleMember,
         onClick = {
             onCaisseClick(item.caisse.id, item.activeCycleId)
         },

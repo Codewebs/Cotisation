@@ -63,10 +63,15 @@ data class CaisseDetailUiState(
     val soldeFraisCaisse: Long = 0L,
     val allTontineCaisses: List<CaisseEntity> = emptyList(),
     val cotisationsCumuleesMap: Map<Long, Long> = emptyMap(),
-    val accessDenied: Boolean = false
+    val accessDenied: Boolean = false,
+    val currentMemberId: Long? = null,
+    val remindersCountMap: Map<String, Int> = emptyMap()
 ) {
     val dejaBeneficiaires: List<Long>
         get() = partsEncaisseesJusquiciMap.keys.toList()
+
+    val currentMemberHasContributed: Boolean
+        get() = currentMemberId != null && dejaCotise.contains(currentMemberId)
 
     val peutDupliquer: Boolean
         get() {
@@ -234,6 +239,10 @@ class CaisseDetailViewModel @Inject constructor(
                     println("DEBUG_CAISSE:   - Attention: Membre ${p.memberId} non trouvé localement après synchro.")
                 }
             }
+
+            // Sync online transactions from Supabase into local Room DB
+            repository.syncOnlineTransactions(caisse)
+
             println("DEBUG_CAISSE: syncOnlineCaisseMembers - Fin synchro réussie.")
         } catch (e: Exception) {
             println("DEBUG_CAISSE: syncOnlineCaisseMembers error: ${e.message}")
@@ -278,6 +287,10 @@ class CaisseDetailViewModel @Inject constructor(
                 val role = tontineMemberDao.getUserRoleInTontine(tontineId, session.userId)
                 if (role != null) {
                     _state.update { it.copy(role = role) }
+                }
+                val member = tontineMemberDao.getMemberEntity(tontineId, session.userId)
+                if (member != null) {
+                    _state.update { it.copy(currentMemberId = member.id) }
                 }
             }
         }
@@ -526,19 +539,23 @@ class CaisseDetailViewModel @Inject constructor(
             montantFixe = draft.montantFixe,
             montantMinimum = draft.montantMinimum,
             frequence = draft.frequence,
+            regulariteImposee = draft.regulariteImposee,
             redistribution = draft.redistribution,
             possibilitePret = draft.possibilitePret,
+            autoriserPretSurAmendes = draft.autoriserPretSurAmendes,
             tauxInteret = draft.tauxInteret,
             typeInteret = draft.typeInteret,
             penaliteRetardFixe = draft.penaliteRetardFixe,
             penaliteEchecFixe = draft.penaliteEchecFixe,
+            dateLimiteJour = draft.dateLimiteJour,
             fraisCaisse = draft.fraisCaisse,
+            dureeCycles = draft.dureeCycles,
             respecterFrequenceStrictement = draft.respecterFrequenceStrictement,
             updatedAt = System.currentTimeMillis(),
             syncStatus = SyncStatus.PENDING_UPDATE 
         )
 
-        caisseDao.updateCaisse(updatedCaisse)
+        repository.updateCaisseSettings(updatedCaisse)
         // Re-charger pour actualiser l'UI
         loadData(caisseId)
     }
@@ -651,34 +668,71 @@ class CaisseDetailViewModel @Inject constructor(
         }
     }
 
-    fun toggleParticipantCaisse(memberId: Long, selected: Boolean, parts: Int) = viewModelScope.launch {
-        if (selected && !state.value.peutAjouterMembres) return@launch
+    suspend fun saveCaisseParticipantSelection(selectedParts: Map<Long, Int>) {
+        val caisse = caisseDao.getCaisseById(caisseId)
+            ?: error("Caisse introuvable.")
+        val currentParticipants = caisseDao.getParticipantsByCaisseRaw(caisseId)
+            .associateBy { it.memberId }
+        val knownMemberIds = tontineMemberDao.getAllMemberIdsForTontine(caisse.tontineId)
+        require(selectedParts.keys.all { it in knownMemberIds }) {
+            "La sélection contient un membre qui n'appartient pas à cette réunion."
+        }
+        require(selectedParts.values.all { it > 0 }) {
+            "Le nombre de parts doit être supérieur à zéro."
+        }
 
-        val tontine = _state.value.tontine
-        val caisse = _state.value.caisse
-        
-        if (tontine?.isOnline == true && tontine.remoteId != null && caisse?.remoteId != null) {
-            val member = tontineMemberDao.getMemberById(memberId)
-            if (member?.userId != null) {
-                try {
-                    if (selected) {
-                        repository.addOnlineParticipant(caisse.remoteId, member.userId, parts)
-                    } else {
-                        // TODO: Add delete participant API if needed, 
-                        // for now we assume online management is primary
-                    }
-                } catch (e: Exception) {
-                    // Log error or notify UI
-                }
+        val addedIds = selectedParts.keys - currentParticipants.keys
+        val removedIds = currentParticipants.keys - selectedParts.keys
+        val changedPartsIds = selectedParts.keys.intersect(currentParticipants.keys)
+            .filter { currentParticipants.getValue(it).nombreParts != selectedParts.getValue(it) }
+
+        if (addedIds.isNotEmpty() && !_state.value.peutAjouterMembres) {
+            error("Cette caisse ne permet plus d'ajouter de participants.")
+        }
+        if (removedIds.any { (_state.value.partsEncaisseesMap[it] ?: 0) > 0 }) {
+            error("Un membre ayant déjà reçu des parts ne peut pas être retiré.")
+        }
+        if (changedPartsIds.isNotEmpty() && !_state.value.peutAjouterMembres) {
+            error("Le nombre de parts ne peut plus être modifié dans cette caisse.")
+        }
+
+        if (_state.value.tontine?.isOnline == true && caisse.remoteId != null) {
+            (addedIds + changedPartsIds).forEach { memberId ->
+                val member = tontineMemberDao.getMemberById(memberId)
+                    ?: error("Membre introuvable.")
+                val remoteMemberId = member.remoteId ?: member.userId
+                    ?: error("Ce membre n'a pas d'identifiant en ligne.")
+                repository.addOnlineParticipant(
+                    caisse.remoteId,
+                    remoteMemberId,
+                    selectedParts.getValue(memberId)
+                )
+            }
+            removedIds.forEach { memberId ->
+                val member = tontineMemberDao.getMemberById(memberId)
+                    ?: error("Membre introuvable.")
+                val remoteMemberId = member.remoteId ?: member.userId
+                    ?: error("Ce membre n'a pas d'identifiant en ligne.")
+                repository.removeOnlineParticipant(caisse.remoteId, remoteMemberId)
             }
         }
 
-        // Garder la modif locale pour la réactivité immédiate et le cache
-        if (selected) {
-            caisseDao.addParticipantToCaisse(CaisseParticipantEntity(caisseId, memberId, 0, false, parts))
-        } else {
-            caisseDao.removeParticipantFromCaisse(caisseId, memberId)
+        selectedParts.entries.forEachIndexed { index, (memberId, parts) ->
+            val existing = currentParticipants[memberId]
+            if (existing == null) {
+                caisseDao.addParticipantToCaisse(
+                    CaisseParticipantEntity(
+                        caisseId = caisseId,
+                        memberId = memberId,
+                        ordrePassage = index + 1,
+                        nombreParts = parts
+                    )
+                )
+            } else if (existing.nombreParts != parts) {
+                caisseDao.addParticipantToCaisse(existing.copy(nombreParts = parts))
+            }
         }
+        removedIds.forEach { caisseDao.removeParticipantFromCaisse(caisseId, it) }
     }
 
     fun exporterFond(type: com.indiza.cotisation.bank.TransactionType, montant: Long, motif: String, targetCaisseId: Long? = null) = viewModelScope.launch {
@@ -687,7 +741,7 @@ class CaisseDetailViewModel @Inject constructor(
         val member = tontineMemberDao.getMemberEntity(tontineId = _state.value.caisse?.tontineId ?: 0L, userId = session.userId) ?: return@launch
         
         // 1. Sortie de la caisse actuelle
-        transactionDao.insertTransaction(
+        repository.recordTransaction(
             com.indiza.cotisation.bank.TransactionEntity(
                 caisseId = caisseId,
                 memberId = member.id,
@@ -701,7 +755,7 @@ class CaisseDetailViewModel @Inject constructor(
 
         // 2. Entrée dans la caisse cible (si spécifiée)
         if (targetCaisseId != null) {
-            transactionDao.insertTransaction(
+            repository.recordTransaction(
                 com.indiza.cotisation.bank.TransactionEntity(
                     caisseId = targetCaisseId,
                     memberId = member.id,
@@ -720,24 +774,4 @@ class CaisseDetailViewModel @Inject constructor(
         onResult(newId)
     }
 
-    fun toggleAllParticipants(selected: Boolean) = viewModelScope.launch {
-        if (selected && !state.value.peutAjouterMembres) return@launch
-
-        if (selected) {
-            _state.value.allTontineMembers.forEachIndexed { index, member ->
-                val alreadyExists = _state.value.participants.any { it.member.id == member.member.id }
-                if (!alreadyExists) {
-                    caisseDao.addParticipantToCaisse(CaisseParticipantEntity(caisseId, member.member.id, index + 1, false, 1))
-                }
-            }
-        } else {
-            // Uniquement ceux qui n'ont pas encore bouffé
-            _state.value.participants.forEach { p ->
-                val partsDejaTouchees = _state.value.partsEncaisseesMap[p.member.id] ?: 0
-                if (partsDejaTouchees == 0) {
-                    caisseDao.removeParticipantFromCaisse(caisseId, p.member.id)
-                }
-            }
-        }
-    }
 }

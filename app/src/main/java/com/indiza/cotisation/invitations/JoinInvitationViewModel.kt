@@ -2,7 +2,7 @@ package com.indiza.cotisation.invitations
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.indiza.cotisation.network.RemoteApi
+import com.indiza.cotisation.network.SupabaseDiscoveryService
 import com.indiza.cotisation.users.SessionDao
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,7 +23,7 @@ data class JoinInvitationUiState(
 
 @HiltViewModel
 class JoinInvitationViewModel @Inject constructor(
-    private val remoteApi: RemoteApi,
+    private val discoveryService: SupabaseDiscoveryService,
     private val sessionDao: SessionDao
 ) : ViewModel() {
 
@@ -36,18 +36,24 @@ class JoinInvitationViewModel @Inject constructor(
         currentInviteCode = code
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
+            val isAuthenticated = sessionDao.getCurrentSession() != null
+            _state.update { it.copy(isAuthenticated = isAuthenticated) }
             try {
-                val details = remoteApi.getInvitationDetails(code)
-                val session = sessionDao.getCurrentSession()
-                
+                val details = discoveryService.getTontineInvite(code)
                 _state.update { it.copy(
                     isLoading = false,
-                    isAuthenticated = session != null,
-                    tontineName = details.Tontine.libelle,
-                    inviterName = details.sender.nom
+                    isAuthenticated = isAuthenticated,
+                    tontineName = details.tontineName,
+                    inviterName = null
                 )}
             } catch (e: Exception) {
-                _state.update { it.copy(isLoading = false, error = "Invitation invalide ou expiré") }
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        isAuthenticated = isAuthenticated,
+                        error = if (isAuthenticated) "Invitation invalide ou expiré" else "Connectez-vous pour consulter cette invitation"
+                    )
+                }
             }
         }
     }
@@ -58,7 +64,7 @@ class JoinInvitationViewModel @Inject constructor(
             _state.update { it.copy(isJoining = true, error = null) }
             try {
                 val session = sessionDao.getCurrentSession() ?: throw Exception("Session requise")
-                remoteApi.joinTontine(code, session.userId)
+                discoveryService.joinTontineWithInvite(code)
                 _state.update { it.copy(isJoining = false, joinSuccess = true) }
             } catch (e: Exception) {
                 _state.update { it.copy(isJoining = false, error = "Erreur: ${e.message}") }

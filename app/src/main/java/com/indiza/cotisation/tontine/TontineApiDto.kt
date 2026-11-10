@@ -1,6 +1,7 @@
 package com.indiza.cotisation.tontine
 
 import com.indiza.cotisation.sync.SyncStatus
+import kotlinx.serialization.SerialName
 import java.time.LocalDate
 
 data class TontineApiDto(
@@ -9,6 +10,8 @@ data class TontineApiDto(
     val exercice: String? = null,
     val dateDebut: String,
     val dateFin: String,
+    @SerialName("is_anonymous") val isAnonymous: Boolean = false,
+    @SerialName("hide_info_for_simple_members") val hideInfoForSimpleMembers: Boolean = false,
     val creatorId: String? = null,
     val updatedAt: Long,
     val caisses: List<com.indiza.cotisation.caisses.CaisseApiDto>? = null,
@@ -41,6 +44,8 @@ fun TontineApiDto.toEntity() = TontineEntity(
     exercice = exercice,
     dateDebut = LocalDate.parse(dateDebut),
     dateFin = LocalDate.parse(dateFin),
+    isAnonymous = isAnonymous,
+    hideInfoForSimpleMembers = hideInfoForSimpleMembers,
     creatorId = creatorId,
     syncStatus = SyncStatus.SYNCED,
     updatedAt = updatedAt,

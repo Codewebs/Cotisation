@@ -11,17 +11,23 @@ class AuthViewModel @Inject constructor(
     private val authService: AuthService
 ) : ViewModel() {
 
-    fun login(phone: String, pin: String, callback: (Result<SessionEntity>) -> Unit) {
+    fun login(email: String, password: String, callback: (Result<SessionEntity>) -> Unit) {
         viewModelScope.launch {
-            val result = authService.loginOnline(phone, pin)
+            val result = authService.loginOnline(email, password)
             callback(result)
         }
     }
 
-    fun register(nom: String, matricule: String, phone: String, pin: String, callback: (Result<UserEntity>) -> Unit) {
+    fun register(
+        nom: String,
+        matricule: String,
+        phone: String,
+        email: String,
+        password: String,
+        callback: (Result<RegistrationResult>) -> Unit
+    ) {
         viewModelScope.launch {
-            println("************************************")
-            val result = authService.registerOnline(nom, phone, pin)
+            val result = authService.registerOnline(nom, matricule, phone, email, password)
             callback(result)
         }
     }

@@ -72,7 +72,7 @@ class LoanManagementViewModel @Inject constructor(
         pretDao.insertPret(pret)
 
         // Enregistrer la transaction financière
-        transactionDao.insertTransaction(
+        tontineRepository.recordTransaction(
             TransactionEntity(
                 caisseId = caisseId,
                 memberId = memberId ?: guarantorId ?: 0L,

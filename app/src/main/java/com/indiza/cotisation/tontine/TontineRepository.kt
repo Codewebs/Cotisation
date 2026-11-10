@@ -16,11 +16,13 @@ import com.indiza.cotisation.sync.SyncAction
 import com.indiza.cotisation.sync.SyncQueueDao
 import com.indiza.cotisation.sync.SyncQueueEntity
 import com.indiza.cotisation.sync.SyncStatus
+import com.indiza.cotisation.network.SupabaseDiscoveryService
 import com.indiza.cotisation.users.Role
 import com.indiza.cotisation.users.SessionDao
 import com.indiza.cotisation.users.UserDao
 import com.indiza.cotisation.users.UserEntity
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.time.LocalDate
@@ -36,7 +38,9 @@ class TontineRepository @Inject constructor(
     private val sessionDao: SessionDao,
     private val syncQueueDao: SyncQueueDao,
     private val syncManager: com.indiza.cotisation.sync.SyncManager,
-    private val apiService: TontineApi
+    private val apiService: TontineApi,
+    private val commentService: SupabaseCommentService,
+    private val discoveryService: SupabaseDiscoveryService
 )
 {
 
@@ -70,7 +74,10 @@ class TontineRepository @Inject constructor(
                     penaliteEchecFixe = caisseDraft.penaliteEchecFixe,
                     dateLimiteJour = caisseDraft.dateLimiteJour,
                     fraisCaisse = caisseDraft.fraisCaisse,
+                    possibilitePret = caisseDraft.possibilitePret,
+                    autoriserPretSurAmendes = caisseDraft.autoriserPretSurAmendes,
                     respecterFrequenceStrictement = caisseDraft.respecterFrequenceStrictement,
+                    dureeCycles = caisseDraft.dureeCycles,
                     ordreRedistribution = null,
                     updatedAt = System.currentTimeMillis()
                 )
@@ -227,7 +234,7 @@ class TontineRepository @Inject constructor(
         
         val currentUserId = tontineMemberDao.getTontineMembers(tontineId).find { it.role == Role.PRESIDENT || it.role == Role.TRESORIER }?.id ?: 0L
 
-        transactionDao.insertTransaction(
+        recordTransaction(
             TransactionEntity(
                 caisseId = sourceCaisseId,
                 memberId = currentUserId,
@@ -238,7 +245,7 @@ class TontineRepository @Inject constructor(
             )
         )
 
-        transactionDao.insertTransaction(
+        recordTransaction(
             TransactionEntity(
                 caisseId = basiqueId,
                 memberId = currentUserId,
@@ -254,9 +261,9 @@ class TontineRepository @Inject constructor(
 
     @androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.O)
     suspend fun searchTontines(query: String): List<TontineSearchResult> {
-        val userId = getCurrentUserId()
         return try {
-            val remoteResults = apiService.searchTontines(query, userId)
+            val remoteResults = discoveryService.searchTontines(query)
+            val statuses = discoveryService.getMembershipStatuses(remoteResults.map { it.id })
             remoteResults.map { dto ->
                 // Map to TontineEntity and local sync
                 val existing = dao.getByRemoteId(dto.id)
@@ -264,14 +271,24 @@ class TontineRepository @Inject constructor(
                     id = existing?.id ?: 0L,
                     libelle = dto.libelle,
                     exercice = dto.exercice,
-                    dateDebut = if (dto.dateDebut.isNotEmpty()) java.time.LocalDate.parse(dto.dateDebut) else java.time.LocalDate.now(),
-                    dateFin = if (dto.dateFin.isNotEmpty()) java.time.LocalDate.parse(dto.dateFin) else java.time.LocalDate.now().plusYears(1),
+                    dateDebut = existing?.dateDebut ?: java.time.LocalDate.now(),
+                    dateFin = existing?.dateFin ?: java.time.LocalDate.now().plusYears(1),
+                    creatorId = dto.creatorId,
                     remoteId = dto.id,
                     syncStatus = SyncStatus.SYNCED,
-                    updatedAt = dto.updatedAt
+                    updatedAt = System.currentTimeMillis()
                 )
-                dao.upsert(entity)
-                TontineSearchResult(entity, dto.membershipStatus)
+                val localId = if (existing == null) {
+                    dao.insertTontine(entity)
+                } else {
+                    dao.upsert(entity)
+                    existing.id
+                }
+                TontineSearchResult(
+                    tontine = entity.copy(id = localId),
+                    membershipStatus = statuses[dto.id] ?: dto.membershipStatus ?: "NONE",
+                    memberCount = dto.memberCount
+                )
             }
         } catch (e: Exception) {
             println("SEARCH_ERROR: ${e.message}")
@@ -280,8 +297,38 @@ class TontineRepository @Inject constructor(
     }
 
     suspend fun requestJoinTontine(tontineRemoteId: String) {
+        getCurrentUserId() ?: throw Exception("Utilisateur non connecté")
+        discoveryService.requestToJoin(tontineRemoteId)
+    }
+
+    suspend fun claimEmptyDefaultTontine(tontine: TontineEntity): TontineEntity? {
+        val remoteId = tontine.remoteId ?: return null
         val userId = getCurrentUserId() ?: throw Exception("Utilisateur non connecté")
-        apiService.requestJoin(tontineRemoteId, mapOf("userId" to userId))
+        if (!discoveryService.claimEmptyDefaultTontine(remoteId)) return null
+
+        val updatedTontine = tontine.copy(creatorId = userId)
+        dao.upsert(updatedTontine)
+
+        if (tontineMemberDao.getUserRoleInTontine(tontine.id, userId) == null) {
+            val currentUser = userDao.getUserById(userId)
+            tontineMemberDao.insertMember(
+                TontineMemberEntity(
+                    tontineId = tontine.id,
+                    userId = userId,
+                    nomSaisi = currentUser?.nom ?: "Administrateur",
+                    phone = currentUser?.phone ?: "",
+                    matricule = currentUser?.matricule ?: "",
+                    role = Role.INITIATEUR,
+                    isInitiator = true
+                )
+            )
+        }
+        return updatedTontine
+    }
+
+    suspend fun cancelJoinTontine(tontineRemoteId: String) {
+        getCurrentUserId() ?: throw Exception("Utilisateur non connecté")
+        discoveryService.cancelJoinRequest(tontineRemoteId)
     }
 
     suspend fun fetchMyOnlineTontines(): List<TontineWithCaissesAndRole> {
@@ -375,7 +422,7 @@ class TontineRepository @Inject constructor(
                         matricule = remoteAccountUserId,
                         remoteId = remoteAccountUserId,
                         syncStatus = SyncStatus.SYNCED,
-                        isVerified = true
+                        isVerified = false
                     )
                 )
             }
@@ -387,7 +434,7 @@ class TontineRepository @Inject constructor(
                 println("DEBUG_REPO:   - Nouveau membre détecté: ${remoteMember.nomSaisi}. Insertion...")
             }
 
-            tontineMemberDao.insertMember(
+            tontineMemberDao.upsertMember(
                 (existing ?: TontineMemberEntity(tontineId = tontineId, nomSaisi = remoteMember.nomSaisi, phone = remoteMember.phone, role = remoteMember.role))
                     .copy(
                         remoteId = remoteMemberRecordId,
@@ -403,12 +450,62 @@ class TontineRepository @Inject constructor(
         println("DEBUG_REPO: syncOnlineTontineMembers - Synchro terminée.")
     }
 
-    suspend fun createOnlineTransaction(transactionDto: TransactionApiDto) {
-        apiService.createTransaction(transactionDto)
+    suspend fun syncOnlineTransactions(caisse: CaisseEntity) {
+        val remoteCaisseId = caisse.remoteId ?: return
+        try {
+            println("DEBUG_REPO: syncOnlineTransactions - Récupération transactions en ligne pour caisse ${caisse.id}")
+            val remoteTransactions = apiService.getTransactionsByCaisse(remoteCaisseId)
+            println("DEBUG_REPO:   - ${remoteTransactions.size} transactions en ligne trouvées")
+
+            remoteTransactions.forEach { txDto ->
+                val type = runCatching { TransactionType.valueOf(txDto.type) }.getOrNull() ?: return@forEach
+
+                val localMember = tontineMemberDao.getMemberByRemoteId(caisse.tontineId, txDto.memberId)
+                    ?: tontineMemberDao.getMemberEntity(caisse.tontineId, txDto.memberId)
+                    ?: return@forEach
+
+                val cycleNum = txDto.cycleNumber ?: 1
+                var localCycle = cycleDao.getCycleByNumero(caisse.id, cycleNum)
+                if (localCycle == null) {
+                    val newCycleId = cycleDao.insertCycle(
+                        com.indiza.cotisation.bank.CycleEntity(
+                            caisseId = caisse.id,
+                            numeroCycle = cycleNum
+                        )
+                    )
+                    localCycle = cycleDao.getCycleById(newCycleId)
+                }
+                val cycleId = localCycle?.id ?: return@forEach
+
+                val exists = transactionDao.existsTransaction(caisse.id, localMember.id, type, txDto.dateTransaction) > 0
+                if (!exists) {
+                    println("DEBUG_REPO:   - Insertion transaction ${txDto.type} (${txDto.montant} F) pour membre ${localMember.nomSaisi}")
+                    transactionDao.insertTransaction(
+                        TransactionEntity(
+                            caisseId = caisse.id,
+                            memberId = localMember.id,
+                            cycleId = cycleId,
+                            montant = txDto.montant,
+                            type = type,
+                            dateTransaction = txDto.dateTransaction,
+                            validatedById = txDto.validatedById,
+                            motif = txDto.motif
+                        )
+                    )
+                }
+            }
+            println("DEBUG_REPO: syncOnlineTransactions - Synchro des transactions terminée.")
+        } catch (e: Exception) {
+            println("DEBUG_REPO: ERREUR synchro transactions: ${e.message}")
+        }
     }
 
     suspend fun addOnlineParticipant(caisseRemoteId: String, memberRemoteId: String, parts: Int) {
-        apiService.addCaisseParticipant(caisseRemoteId, mapOf("memberId" to memberRemoteId, "nombreParts" to parts.toString()))
+        apiService.addCaisseParticipant(caisseRemoteId, memberRemoteId, parts)
+    }
+
+    suspend fun removeOnlineParticipant(caisseRemoteId: String, memberRemoteId: String) {
+        apiService.removeCaisseParticipant(caisseRemoteId, memberRemoteId)
     }
 
     suspend fun getCaisseRemoteId(caisseId: Long): String? {
@@ -426,11 +523,11 @@ class TontineRepository @Inject constructor(
     }
 
     suspend fun updateOnlineParticipantOrder(caisseRemoteId: String, memberUserId: String, order: Int) {
-        apiService.updateParticipantOrder(caisseRemoteId, memberUserId, mapOf("ordrePassage" to order.toString()))
+        apiService.updateParticipantOrder(caisseRemoteId, memberUserId, order)
     }
 
     suspend fun addOnlineMember(tontineRemoteId: String, nom: String, phone: String, role: String): TontineMemberApiDto {
-        return apiService.addMember(tontineRemoteId, mapOf("nomSaisi" to nom, "phone" to phone, "role" to role))
+        return apiService.addMember(tontineRemoteId, nom, phone, role)
     }
 
     suspend fun getCurrentUserId(): String? {
@@ -454,26 +551,45 @@ class TontineRepository @Inject constructor(
         dateDebut: LocalDate,
         dateFin: LocalDate,
         isOnline: Boolean = true,
-        isAnonymous: Boolean = false
+        isAnonymous: Boolean = false,
+        hideInfoForSimpleMembers: Boolean = false
     ): Long {
         val remoteId = if (isOnline) java.util.UUID.randomUUID().toString() else null
         val userId = getCurrentUserId()
 
         if (isOnline && remoteId != null) {
-            try {
-                // DIRECT ONLINE CREATE for Tontine
-                val apiDto = TontineApiDto(
-                    id = remoteId,
-                    libelle = libelle,
-                    exercice = exercice,
-                    dateDebut = dateDebut.toString(),
-                    dateFin = dateFin.toString(),
-                    creatorId = userId,
-                    updatedAt = System.currentTimeMillis()
-                )
+            val apiDto = TontineApiDto(
+                id = remoteId,
+                libelle = libelle,
+                exercice = exercice,
+                dateDebut = dateDebut.toString(),
+                dateFin = dateFin.toString(),
+                isAnonymous = isAnonymous,
+                hideInfoForSimpleMembers = hideInfoForSimpleMembers,
+                creatorId = userId,
+                updatedAt = System.currentTimeMillis()
+            )
+            val createdRemotely = try {
                 apiService.createTontine(apiDto)
-                
-                // Si réussi, on insère localement en tant que SYNCED
+            } catch (e: Exception) {
+                val errorDetails = generateSequence<Throwable>(e) { it.cause }
+                    .joinToString(" ") { it.message.orEmpty() }
+                if (
+                    errorDetails.contains("23505") ||
+                    errorDetails.contains("already have a tontine with this name", ignoreCase = true) ||
+                    errorDetails.contains("shared default tontine already exists", ignoreCase = true)
+                ) {
+                    throw IllegalArgumentException(
+                        "Vous avez déjà créé une réunion portant ce nom.",
+                        e
+                    )
+                }
+                // Fallback to Sync Queue if server unreachable
+                println("SYNC_ERROR: Fallback to queue for tontine creation: ${e.message}")
+                null
+            }
+
+            if (createdRemotely != null) {
                 val tontineId = dao.insertTontine(
                     TontineEntity(
                         libelle = libelle,
@@ -482,7 +598,9 @@ class TontineRepository @Inject constructor(
                         dateFin = dateFin,
                         isOnline = true,
                         isAnonymous = isAnonymous,
-                        remoteId = remoteId,
+                        hideInfoForSimpleMembers = hideInfoForSimpleMembers,
+                        creatorId = createdRemotely.creatorId ?: userId,
+                        remoteId = createdRemotely.id,
                         syncStatus = SyncStatus.SYNCED
                     )
                 )
@@ -502,9 +620,6 @@ class TontineRepository @Inject constructor(
                     )
                 }
                 return tontineId
-            } catch (e: Exception) {
-                // Fallback to Sync Queue if server unreachable
-                println("SYNC_ERROR: Fallback to queue for tontine creation: ${e.message}")
             }
         }
 
@@ -517,6 +632,8 @@ class TontineRepository @Inject constructor(
                 dateFin = dateFin,
                 isOnline = isOnline,
                 isAnonymous = isAnonymous,
+                hideInfoForSimpleMembers = hideInfoForSimpleMembers,
+                creatorId = userId,
                 remoteId = remoteId,
                 syncStatus = if (isOnline) SyncStatus.PENDING_CREATE else SyncStatus.SYNCED
             )
@@ -553,6 +670,21 @@ class TontineRepository @Inject constructor(
     suspend fun triggerSync() {
         syncManager.triggerSync()
     }
+
+    suspend fun updateCaisseSettings(caisse: CaisseEntity) {
+        caisseDao.updateCaisse(caisse)
+        if (caisse.remoteId != null) {
+            syncQueueDao.enqueue(
+                SyncQueueEntity(
+                    entityType = "CAISSE",
+                    entityLocalId = caisse.id,
+                    action = SyncAction.UPDATE
+                )
+            )
+            syncManager.triggerSync()
+        }
+    }
+
     suspend fun getUserTontinesWithRole(userId: String): Flow<List<TontineWithCaissesAndRole>> {
         return tontineMemberDao.getUserTontinesWithCaisses(userId).map { list ->
             list.map { item ->
@@ -591,42 +723,146 @@ class TontineRepository @Inject constructor(
         libelle: String,
         exercice: String,
         dateDebut: LocalDate,
-        dateFin: LocalDate
+        dateFin: LocalDate,
+        isAnonymous: Boolean,
+        hideInfoForSimpleMembers: Boolean
     ) {
-        dao.updateTontineInfo(tontineId, libelle, exercice, dateDebut, dateFin)
+        val tontine = dao.getById(tontineId) ?: error("Réunion introuvable.")
+        val currentName = tontine.libelle.trim()
+        val newName = libelle.trim()
+        val userId = getCurrentUserId()
+        if (
+            !currentName.equals(newName, ignoreCase = true) &&
+            userId != null &&
+            dao.existsOtherNameForInitiator(newName, userId, tontineId)
+        ) {
+            throw IllegalArgumentException("Vous avez déjà créé une réunion portant ce nom.")
+        }
+
+        dao.updateTontineInfo(
+            tontineId,
+            libelle,
+            exercice,
+            dateDebut,
+            dateFin,
+            isAnonymous,
+            hideInfoForSimpleMembers
+        )
+        if (tontine.isOnline && tontine.remoteId != null) {
+            syncQueueDao.enqueue(
+                SyncQueueEntity(
+                    entityType = "TONTINE",
+                    entityLocalId = tontineId,
+                    action = SyncAction.UPDATE
+                )
+            )
+            syncManager.triggerSync()
+        }
     }
 
     suspend fun updateOnlineStatus(tontineId: Long, isOnline: Boolean) {
         dao.updateOnlineStatus(tontineId, isOnline)
     }
 
-    suspend fun addMemberToTontine(tontineId: Long, nom: String, phone: String, role: Role, matricule: String) {
-        tontineMemberDao.insertMember(
+    suspend fun addMemberToTontine(
+        tontineId: Long,
+        nom: String,
+        phone: String,
+        role: Role,
+        matricule: String,
+        remoteId: String? = null,
+        userId: String? = null
+    ): Long {
+        val localMemberId = tontineMemberDao.insertMember(
             TontineMemberEntity(
                 tontineId = tontineId,
+                remoteId = remoteId,
+                userId = userId,
                 nomSaisi = nom,
                 phone = phone,
                 role = role,
                 matricule = matricule
             )
         )
+        val tontine = dao.getById(tontineId)
+        if (tontine?.isOnline == true && remoteId == null) {
+            syncQueueDao.enqueue(
+                SyncQueueEntity(
+                    entityType = "MEMBER",
+                    entityLocalId = localMemberId,
+                    action = SyncAction.CREATE
+                )
+            )
+            syncManager.triggerSync()
+        }
+        return localMemberId
+    }
+
+    suspend fun addOnlineMember(
+        remoteTontineId: String,
+        nom: String,
+        phone: String,
+        role: Role
+    ): TontineMemberApiDto = apiService.addMember(remoteTontineId, nom, phone, role.name)
+
+    suspend fun recordTransaction(transaction: TransactionEntity): Long {
+        val localId = transactionDao.insertTransaction(transaction)
+        val caisse = caisseDao.getById(transaction.caisseId) ?: return localId
+        val tontine = dao.getById(caisse.tontineId) ?: return localId
+        if (!tontine.isOnline) return localId
+
+        val queueEntry = SyncQueueEntity(
+            entityType = "TRANSACTION",
+            entityLocalId = localId,
+            action = SyncAction.CREATE
+        )
+        try {
+            val remoteCaisseId = caisse.remoteId ?: error("Caisse non synchronisée")
+            val member = tontineMemberDao.getMemberById(transaction.memberId)
+                ?: error("Membre introuvable")
+            val remoteMemberId = member.remoteId ?: member.userId
+                ?: error("Membre non synchronisé")
+            val cycle = cycleDao.getCycleById(transaction.cycleId)
+                ?: error("Cycle introuvable")
+
+            apiService.createTransaction(
+                TransactionApiDto(
+                    id = transactionRemoteId(localId),
+                    caisseId = remoteCaisseId,
+                    memberId = remoteMemberId,
+                    cycleId = cycle.id.toString(),
+                    montant = transaction.montant,
+                    type = transaction.type.name,
+                    motif = transaction.motif,
+                    dateTransaction = transaction.dateTransaction,
+                    validatedById = transaction.validatedById
+                ),
+                cycle.numeroCycle
+            )
+        } catch (_: Exception) {
+            syncQueueDao.enqueue(queueEntry)
+            syncManager.triggerSync()
+        }
+        return localId
     }
 
     suspend fun generateInviteLink(tontineId: String, senderId: String): String {
-        return apiService.generateInvite(tontineId, com.indiza.cotisation.invitations.InviteGenerationRequest(senderId)).code
+        return apiService.generateInvite(tontineId, senderId).code
     }
 
     suspend fun broadcastReport(tontineId: String, senderId: String) {
-        apiService.broadcastReport(tontineId, mapOf("senderId" to senderId))
+        apiService.broadcastReport(tontineId, senderId)
     }
 
     suspend fun getComments(tontineId: String): List<CommentResponse> {
-        val userId = getCurrentUserId()
-        return apiService.getComments(tontineId, userId)
+        return commentService.getComments(tontineId)
     }
+
+    fun observeCommentChanges(tontineId: String): Flow<Unit> =
+        commentService.observeCommentChanges(tontineId)
     
-    suspend fun postComment(tontineId: String, userId: String, content: String, imageUrl: String?) = 
-        apiService.postComment(tontineId, CommentRequest(userId, content, imageUrl))
+    suspend fun postComment(tontineId: String, content: String, imageBytes: ByteArray?) =
+        commentService.postComment(tontineId, content, imageBytes)
 
     suspend fun clearLocalData() {
         dao.deleteAllTontines()

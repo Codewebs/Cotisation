@@ -26,6 +26,7 @@ fun ParticipantOrderRow(
     isRedistribution: Boolean,
     aCotiseCeCycle: Boolean = false,
     partsRecuesTotal: Int = 0,
+    canReorder: Boolean = true,
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit
 ) {
@@ -105,7 +106,7 @@ fun ParticipantOrderRow(
             }
         }
 
-        if (isRedistribution) {
+        if (isRedistribution && canReorder) {
             Row {
                 IconButton(onClick = onMoveUp, modifier = Modifier.size(32.dp)) {
                     Icon(Icons.Default.ArrowUpward, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(18.dp))

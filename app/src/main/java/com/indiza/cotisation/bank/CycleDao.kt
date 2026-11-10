@@ -39,4 +39,7 @@ interface CycleDao {
 
     @Query("SELECT MAX(numeroCycle) FROM caisse_cycles WHERE caisseId = :caisseId")
     suspend fun getMaxNumeroCycle(caisseId: Long): Int?
+
+    @Query("SELECT * FROM caisse_cycles WHERE caisseId = :caisseId AND numeroCycle = :numeroCycle LIMIT 1")
+    suspend fun getCycleByNumero(caisseId: Long, numeroCycle: Int): CycleEntity?
 }

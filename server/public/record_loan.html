@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cotisation - Accorder un Prêt</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+    <script src="/js/supabase-config.js"></script>
+    <script src="/js/supabase-client.js"></script>
+    <script src="/js/realtime.js"></script>
 </head>
 <body class="bg-gray-900 text-white min-h-screen p-4 md:p-8 flex items-center justify-center">
     <div class="max-w-3xl w-full bg-gray-800 rounded-[2.5rem] shadow-2xl border border-gray-700 p-8 md:p-12">
@@ -80,18 +84,19 @@
 
         async function fetchCaisseInfo() {
             try {
-                const res = await fetch(`/caisses/${caisseId}`);
-                const caisse = await res.json();
+                const { data: caisse, error } = await db.from('caisses')
+                    .select('id,tontine_id,libelle,taux_interet').eq('id', caisseId).single();
+                if (error) throw error;
                 document.getElementById('caisse-info').innerText = `CAISSE : ${caisse.libelle}`;
-                if (caisse.tauxInteret) document.getElementById('taux').value = caisse.tauxInteret;
-
-                const tRes = await fetch(`/tontines/${caisse.tontineId}`);
-                const tontine = await tRes.json();
+                if (caisse.taux_interet) document.getElementById('taux').value = caisse.taux_interet;
+                const { data: members, error: membersError } = await db.from('members')
+                    .select('id,nom_saisi').eq('tontine_id', caisse.tontine_id);
+                if (membersError) throw membersError;
                 const select = document.getElementById('member-select');
-                tontine.members.forEach(m => {
+                members.forEach(m => {
                     const opt = document.createElement('option');
                     opt.value = m.id;
-                    opt.innerText = m.nomSaisi.toUpperCase();
+                    opt.innerText = m.nom_saisi.toUpperCase();
                     select.appendChild(opt);
                 });
             } catch (e) { console.error(e); }
@@ -110,31 +115,25 @@
             if (!echeance) return alert("Date d'échéance requise.");
 
             const data = {
-                caisseId,
-                memberId: memberId || null,
-                nomEmprunteurExterne: nomEx || null,
-                cniEmprunteurExterne: cniEx || null,
-                montantPrincipal: parseInt(montant),
-                montantInterets: Math.floor(parseInt(montant) * (parseFloat(taux)/100)),
-                tauxInteret: parseFloat(taux),
-                dateEcheance: new Date(echeance).getTime(),
-                typeInteret: 'SIMPLE'
+                caisse_id: caisseId,
+                member_id: memberId || null,
+                nom_emprunteur_externe: nomEx || null,
+                cni_emprunteur_externe: cniEx || null,
+                montant_principal: parseInt(montant, 10),
+                montant_interets: Math.floor(parseInt(montant, 10) * (parseFloat(taux) / 100)),
+                montant_restant: parseInt(montant, 10) + Math.floor(parseInt(montant, 10) * (parseFloat(taux) / 100)),
+                taux_interet: parseFloat(taux),
+                date_echeance: new Date(echeance).getTime(),
+                type_interet: 'SIMPLE',
+                statut: 'PENDING'
             };
 
             try {
-                const res = await fetch('/prets', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(data)
-                });
-                if (res.ok) {
-                    alert("Demande de prêt enregistrée !");
-                    history.back();
-                } else {
-                    const err = await res.json();
-                    alert(err.error);
-                }
-            } catch (e) { alert("Erreur serveur"); }
+                const { error } = await db.from('prets').insert(data);
+                if (error) throw error;
+                alert("Demande de prêt enregistrée !");
+                history.back();
+            } catch (e) { alert(e.message || "Erreur lors de l'enregistrement"); }
         }
     </script>
 </body>

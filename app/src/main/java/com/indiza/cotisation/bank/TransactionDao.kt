@@ -9,7 +9,10 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface TransactionDao {
     @Insert
-    suspend fun insertTransaction(transaction: TransactionEntity)
+    suspend fun insertTransaction(transaction: TransactionEntity): Long
+
+    @Query("SELECT * FROM transactions WHERE id = :id")
+    suspend fun getTransactionById(id: Long): TransactionEntity?
 
     // Calculer le solde actuel d'une caisse
     @Query("SELECT SUM(montant) FROM transactions WHERE caisseId = :caisseId")
@@ -123,6 +126,9 @@ interface TransactionDao {
 
     @Query("SELECT COUNT(*) FROM transactions WHERE caisseId = :caisseId")
     suspend fun getTransactionsCount(caisseId: Long): Int
+
+    @Query("SELECT COUNT(*) FROM transactions WHERE caisseId = :caisseId AND memberId = :memberId AND type = :type AND dateTransaction = :dateTransaction")
+    suspend fun existsTransaction(caisseId: Long, memberId: Long, type: TransactionType, dateTransaction: Long): Int
 
     @Query("""
     SELECT 

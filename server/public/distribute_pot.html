@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cotisation - Remise de la Cagnotte</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+    <script src="/js/supabase-config.js"></script>
+    <script src="/js/supabase-client.js"></script>
+    <script src="/js/realtime.js"></script>
 </head>
 <body class="bg-gray-900 text-white min-h-screen p-4 md:p-8 flex items-center justify-center">
     <div class="max-w-2xl w-full bg-gray-800 rounded-[2.5rem] shadow-2xl border border-gray-700 p-8 md:p-12">
@@ -49,6 +53,8 @@
         const urlParams = new URLSearchParams(window.location.search);
         const caisseId = urlParams.get('caisseId');
         let beneficiaryId = null;
+        let currentCycleId = null;
+        let currentTourId = null;
 
         document.addEventListener('DOMContentLoaded', () => {
             if (!caisseId) { window.location.href = '/profile'; return; }
@@ -58,64 +64,77 @@
         async function fetchCaisseAndBeneficiary() {
             try {
                 // 1. Charger les détails de la caisse pour calculer la cagnotte
-                const res = await fetch(`/caisses/${caisseId}`);
-                const caisse = await res.json();
+                const { data: caisse, error } = await db.from('caisses')
+                    .select('*,cycles(id,numero_cycle,est_cloture),transactions(montant,type,cycle_id)')
+                    .eq('id', caisseId).single();
+                if (error) throw error;
                 document.getElementById('caisse-info').innerText = `${caisse.libelle} • Distribution`;
 
-                // Calculer le total des cotisations du cycle actuel
+                const cycle = (caisse.cycles || []).filter(item => !item.est_cloture)
+                    .sort((a, b) => b.numero_cycle - a.numero_cycle)[0];
+                currentCycleId = cycle ? cycle.id : null;
                 let totalCagnotte = 0;
-                if (caisse.transactions) {
-                    caisse.transactions.forEach(t => {
-                        if (t.type === 'COTISATION') totalCagnotte += parseInt(t.montant);
-                    });
-                }
+                (caisse.transactions || []).filter(t => t.type === 'COTISATION' && t.cycle_id === currentCycleId)
+                    .forEach(t => totalCagnotte += parseInt(t.montant, 10));
                 document.getElementById('montant').value = totalCagnotte;
 
-                // 2. Récupérer le bénéficiaire actuel
-                const tourRes = await fetch(`/caisses/${caisseId}/tours/current`);
-                if (tourRes.ok) {
-                    const tour = await tourRes.json();
-                    if (tour && tour.beneficiary) {
-                        beneficiaryId = tour.beneficiary.id;
-                        document.getElementById('beneficiary-name').innerText = tour.beneficiary.nomSaisi;
-                        document.getElementById('beneficiary-role').innerText = tour.beneficiary.role;
-                    } else {
-                        showMsg("Aucun bénéficiaire n'a été désigné pour ce tour.", false);
-                    }
-                } else {
-                    showMsg("Impossible de charger le bénéficiaire du tour.", false);
-                }
+                const { data: tour, error: tourError } = currentCycleId
+                    ? await db.from('tours').select('id,beneficiary_id,member:members!tours_beneficiary_id_fkey(nom_saisi,role)')
+                        .eq('cycle_id', currentCycleId).eq('est_termine', false).order('numero_tour').limit(1).maybeSingle()
+                    : { data: null, error: null };
+                if (tourError) throw tourError;
+                if (tour && tour.member) {
+                    currentTourId = tour.id;
+                    beneficiaryId = tour.beneficiary_id;
+                    document.getElementById('beneficiary-name').innerText = tour.member.nom_saisi;
+                    document.getElementById('beneficiary-role').innerText = tour.member.role || 'MEMBRE';
+                } else showMsg("Aucun bénéficiaire n'a été désigné pour ce tour.", false);
 
             } catch (e) { console.error(e); }
         }
 
         async function confirmDistribution() {
             if (!beneficiaryId) return alert("Aucun bénéficiaire à qui distribuer la cagnotte.");
-            const montant = document.getElementById('montant').value;
-            const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+            const montantBrut = parseInt(document.getElementById('montant').value, 10);
 
-            if (!montant || montant <= 0) return alert("Le montant de la cagnotte doit être supérieur à 0.");
-            if (!currentUser) return alert("Session expirée.");
+            if (!montantBrut || montantBrut <= 0) return alert("Le montant de la cagnotte doit être supérieur à 0.");
+            if (!currentTourId || !currentCycleId) return alert("Aucun tour actif pour cette caisse.");
 
             try {
-                const res = await fetch(`/caisses/${caisseId}/distribute`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        montant: parseInt(montant),
-                        beneficiaryId: beneficiaryId,
-                        adminUserId: currentUser.id
-                    })
-                });
+                const { data: partData } = await db.from('caisse_participants')
+                    .select('nombre_parts')
+                    .eq('caisse_id', caisseId)
+                    .eq('member_id', beneficiaryId)
+                    .maybeSingle();
+                const nombreParts = partData ? partData.nombre_parts : 1;
 
-                if (res.ok) {
-                    alert("Cagnotte distribuée avec succès ! Le tour est maintenant terminé.");
-                    window.location.href = `/caisse-details?id=${caisseId}`;
-                } else {
-                    const err = await res.json();
-                    alert(err.error);
+                const { data: caisseData } = await db.from('caisses').select('frais_caisse').eq('id', caisseId).single();
+                const fraisParPart = caisseData && caisseData.frais_caisse ? parseInt(caisseData.frais_caisse, 10) : 0;
+                const fraisTotal = fraisParPart * nombreParts;
+                const montantNet = montantBrut - fraisTotal;
+
+                const { error } = await db.rpc('distribute_tontine_pot', {
+                    p_tour_id: currentTourId,
+                    p_amount: montantNet > 0 ? montantNet : montantBrut
+                });
+                if (error) throw error;
+
+                if (fraisTotal > 0 && currentCycleId) {
+                    const userId = (await db.auth.getUser()).data.user?.id;
+                    await db.from('transactions').insert({
+                        caisse_id: caisseId,
+                        member_id: beneficiaryId,
+                        cycle_id: currentCycleId,
+                        validated_by_id: userId,
+                        montant: fraisTotal,
+                        type: 'FRAIS_CAISSE',
+                        motif: `Frais de caisse collectés (${nombreParts} parts)`
+                    });
                 }
-            } catch (e) { alert("Erreur réseau"); }
+
+                alert("Cagnotte distribuée et frais de gestion prélevés (" + fraisTotal + " F). Le tour est terminé.");
+                window.location.href = `/caisse-details?id=${caisseId}`;
+            } catch (e) { alert(e.message || "Erreur lors de la distribution"); }
         }
 
         function showMsg(text, isSuccess) {

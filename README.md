@@ -21,8 +21,36 @@ Managing a tontine manually is error-prone and often leads to disputes. **Cotisa
 - **Architecture**: MVVM with Clean Architecture principles.
 - **DI**: Hilt (Dagger)
 - **Persistence**: Room Database (SQLite)
-- **Networking**: Retrofit 2 & OkHttp
+- **Backend**: Supabase Auth, PostgreSQL, Row Level Security, Realtime and Storage
+- **Web hosting**: Static Node.js/Express file server (no database or WebSocket service)
 - **Concurrency**: Kotlin Coroutines & Flow for reactive UI updates.
+- **Offline sync**: Room remains the local cache and synchronization queue for Android.
+
+## Supabase setup
+
+The project targets a fresh Supabase database; it does not migrate existing
+MySQL/SQLite server data. Apply the migration and configure the public project
+URL and anon/publishable key using the instructions in [supabase/README.md](./supabase/README.md).
+Never put a Supabase `service_role` key in a client or source file. New
+registrations and sign-ins require a network connection; already cached Android
+data remains available offline.
+
+## Account deletion
+
+The public web page is available at `/delete-account?id=<SUPABASE_USER_UUID>`.
+The Android app should open this URL with the signed-in Supabase user's ID in the
+`id` query parameter. The ID only selects the requested account; the page also
+requires the account's email and password, and the deletion endpoint verifies
+that the authenticated user ID matches it.
+
+Deploy the `delete-account` Supabase Edge Function with
+`supabase functions deploy delete-account`. It requires the Supabase project URL,
+anon key, and `SUPABASE_SERVICE_ROLE_KEY` in its server-side environment. Never
+expose the service-role key to the web page or Android app.
+
+Account/profile data, comments, notifications, invitations, push-device records,
+and uploaded comment images are deleted. Membership identity is anonymized, but
+shared tontine and financial history is retained to preserve group accounting.
 
 ---
 
@@ -57,7 +85,7 @@ The synchronization engine ensures the app works flawlessly in various network c
 
 - **`AppDatabase.kt`**: The Room Database definition, managing migrations and providing access to all DAOs.
 - **`SyncQueueEntity.kt`**: A persistent "Outbox" that captures all local changes. Each entry records the `SyncAction` (Create, Update, Delete) and the entity involved.
-- **`SyncEngine.kt`**: The core reconciler. It reads the `SyncQueue`, converts Room entities into API DTOs, and pushes them to the server, handling retries and conflict resolution.
+- **`SyncEngine.kt`**: The core reconciler. It reads the `SyncQueue` and synchronizes pending Room entities with Supabase, handling retries and conflicts.
 - **`SyncWorker.kt`**: A `CoroutineWorker` integrated with Android's WorkManager to trigger sync tasks in the background even if the app is closed.
 - **`NetworkObserver.kt`**: Uses `ConnectivityManager` to monitor real-time internet status, alerting the `SyncEngine` to resume operations as soon as the device is online.
 
@@ -65,7 +93,7 @@ The synchronization engine ensures the app works flawlessly in various network c
 Manages the top-level entity: the Tontine Group itself.
 
 - **`TontineEntity.kt`**: Stores metadata about the group (Name, Creation Date, Admin ID).
-- **`TontineRepository.kt`**: The single source of truth for the UI, orchestrating data between the `RemoteApi` and the local `TontineDao`.
+- **`TontineRepository.kt`**: The single source of truth for the UI, orchestrating data between Supabase and the local `TontineDao`.
 - **`TontineDetailScreen.kt`**: The group's landing page, displaying the list of active funds, managing group members, and providing "Quick Actions" for treasurers. It acts as the primary hub for navigating between different fund types.
 - **`TontineListViewModel.kt`**: Manages the user's portfolio of tontines, handling the initial loading and search/filtering logic.
 
@@ -79,7 +107,7 @@ Manages the relationship between users and groups.
 ### 🔑 `users` (Identity & Access Control)
 Handles security and session lifecycle.
 
-- **`UserEntity.kt` / `SessionEntity.kt`**: Defines the user profile and the active session (JWT tokens, etc.).
+- **`UserEntity.kt` / `SessionEntity.kt`**: Defines the cached user profile and the active Supabase Auth user. Auth credentials remain in Supabase's session storage, not Room.
 - **`AuthViewModel.kt`**: Manages the state machine for login/registration (Loading, Success, Error).
 - **`Permission.kt`**: A logic layer that checks roles before showing administrative UIs, ensuring that only authorized users can modify financial records.
 - **`MatriculeGenerator.kt`**: A utility to generate short, unique alphanumeric codes used to invite new members to a tontine securely.
@@ -117,8 +145,23 @@ La gestion manuelle d'une tontine est source d'erreurs et conduit souvent à des
 - **Architecture** : MVVM avec les principes de la Clean Architecture.
 - **DI** : Hilt (Dagger)
 - **Persistance** : Room Database (SQLite)
-- **Réseau** : Retrofit 2 & OkHttp
+- **Backend** : Supabase Auth, PostgreSQL, Row Level Security, Realtime et Storage
+- **Hébergement Web** : Serveur Node.js/Express statique, sans base métier ni serveur WebSocket
+- **Synchronisation hors ligne** : Room conserve les données locales et sa file de synchronisation.
 - **Concurrence** : Kotlin Coroutines & Flow pour les mises à jour réactives de l'UI.
+
+---
+
+## Configuration Supabase
+
+Le projet utilise une base Supabase neuve; aucune donnée de l'ancien serveur
+MySQL/SQLite n'est importée. Appliquez la migration SQL et configurez l'URL du
+projet ainsi que sa clé publique `anon`/publishable selon le guide
+[supabase/README.md](./supabase/README.md). Ne placez jamais une clé
+`service_role` dans l'application, le navigateur ou le dépôt.
+
+La connexion et la création de nouveaux comptes nécessitent Internet; les
+données Android déjà mises en cache restent accessibles hors ligne.
 
 ---
 
@@ -153,7 +196,7 @@ Le moteur de synchronisation garantit que l'application fonctionne parfaitement 
 
 - **`AppDatabase.kt`** : La définition de la base de données Room, gérant les migrations et fournissant l'accès à tous les DAOs.
 - **`SyncQueueEntity.kt`** : Une "Boîte d'envoi" persistante qui capture tous les changements locaux. Chaque entrée enregistre le `SyncAction` (Création, Mise à jour, Suppression) et l'entité concernée.
-- **`SyncEngine.kt`** : Le réconciliateur central. Lit la `SyncQueue`, convertit les entités Room en DTOs API, et les pousse vers le serveur, gérant les tentatives et la résolution de conflits.
+- **`SyncEngine.kt`** : Le réconciliateur central. Lit la `SyncQueue` et synchronise les entités Room en attente avec Supabase, en gérant les tentatives et les conflits.
 - **`SyncWorker.kt`** : Un `CoroutineWorker` intégré au WorkManager d'Android pour déclencher les tâches de synchronisation en arrière-plan, même si l'app est fermée.
 - **`NetworkObserver.kt`** : Utilise le `ConnectivityManager` pour surveiller l'état du réseau en temps réel, alertant le `SyncEngine` pour reprendre les opérations dès que l'appareil est en ligne.
 
@@ -161,7 +204,7 @@ Le moteur de synchronisation garantit que l'application fonctionne parfaitement 
 Gère l'entité de haut niveau : le Groupe de Tontine lui-même.
 
 - **`TontineEntity.kt`** : Stocke les métadonnées sur le groupe (Nom, Date de création, ID de l'administrateur).
-- **`TontineRepository.kt`** : La source unique de vérité pour l'interface utilisateur, orchestrant les données entre l'API distante et le DAO local.
+- **`TontineRepository.kt`** : La source unique de vérité pour l'interface utilisateur, orchestrant les données entre Supabase et le DAO local.
 - **`TontineDetailScreen.kt`** : La page d'accueil du groupe, affichant la liste des fonds actifs, gérant les membres du groupe et fournissant des "Actions Rapides" pour les trésoriers. Il sert de hub principal pour naviguer entre les différents types de fonds.
 - **`TontineListViewModel.kt`** : Gère le portefeuille de tontines de l'utilisateur, s'occupant du chargement initial et de la logique de recherche/filtrage.
 
@@ -175,7 +218,7 @@ Gère la relation entre les utilisateurs et les groupes.
 ### 🔑 `users` (Identité & Contrôle d'Accès)
 Gère la sécurité et le cycle de vie des sessions.
 
-- **`UserEntity.kt` / `SessionEntity.kt`** : Définit le profil utilisateur et la session active (tokens JWT, etc.).
+- **`UserEntity.kt` / `SessionEntity.kt`** : Définit le profil local et l'utilisateur Supabase Auth actif. Les identifiants restent dans le stockage de session Supabase, jamais dans Room.
 - **`AuthViewModel.kt`** : Gère la machine à états pour la connexion/inscription (Chargement, Succès, Erreur).
 - **`Permission.kt`** : Une couche logique qui vérifie les rôles avant d'afficher les interfaces administratives, garantissant que seuls les utilisateurs autorisés peuvent modifier les enregistrements financiers.
 - **`MatriculeGenerator.kt`** : Un utilitaire pour générer des codes alphanumériques courts et uniques utilisés pour inviter de nouveaux membres à une tontine en toute sécurité.

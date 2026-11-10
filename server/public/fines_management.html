@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cotisation - Gestion des Amendes</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+    <script src="/js/supabase-config.js"></script>
+    <script src="/js/supabase-client.js"></script>
+    <script src="/js/realtime.js"></script>
     <style>
         .glass { background: rgba(17, 24, 39, 0.85); backdrop-filter: blur(10px); }
     </style>
@@ -77,14 +81,20 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             if (!tontineId) { window.location.href = '/profile'; return; }
-            fetchInitialData();
-            fetchFines();
+            fetchInitialData().then(fetchFines);
         });
 
         async function fetchInitialData() {
             try {
-                const res = await fetch(`/tontines/${tontineId}`);
-                tontineData = await res.json();
+                const [tontineResult, caisseResult, memberResult] = await Promise.all([
+                    db.from('tontines').select('id,libelle').eq('id', tontineId).single(),
+                    db.from('caisses').select('id,libelle').eq('tontine_id', tontineId),
+                    db.from('members').select('id,nom_saisi').eq('tontine_id', tontineId)
+                ]);
+                if (tontineResult.error) throw tontineResult.error;
+                if (caisseResult.error) throw caisseResult.error;
+                if (memberResult.error) throw memberResult.error;
+                tontineData = { ...tontineResult.data, caisses: caisseResult.data, members: memberResult.data };
 
                 const cSelect = document.getElementById('caisse-select');
                 tontineData.caisses.forEach(c => {
@@ -102,35 +112,41 @@
             tontineData.members.forEach(m => {
                 const opt = document.createElement('option');
                 opt.value = m.id;
-                opt.innerText = m.nomSaisi.toUpperCase();
+                opt.innerText = m.nom_saisi.toUpperCase();
                 mSelect.appendChild(opt);
             });
         }
 
         async function fetchFines() {
             try {
-                const res = await fetch(`/tontines/${tontineId}/amendes`);
-                const amendes = await res.json();
+                const caisseIds = tontineData.caisses.map(caisse => caisse.id);
+                let amendes = [];
+                if (caisseIds.length) {
+                    const { data, error } = await db.from('amendes').select('*')
+                        .in('caisse_id', caisseIds).order('date_creation', { ascending: false });
+                    if (error) throw error;
+                    amendes = data;
+                }
                 const list = document.getElementById('fine-list');
                 list.innerHTML = '';
 
                 // Map des membres pour les noms
                 const membersMap = {};
-                tontineData.members.forEach(m => membersMap[m.id] = m.nomSaisi);
+                tontineData.members.forEach(m => membersMap[m.id] = m.nom_saisi);
 
-                amendes.forEach(a => {
+                amendes.filter(a => !['PAYE', 'PAYEE'].includes(a.statut)).forEach(a => {
                     const card = document.createElement('div');
                     card.className = "bg-gray-800/60 border border-gray-700 p-5 rounded-3xl flex justify-between items-center gap-4 hover:border-red-500/30 transition shadow-lg";
                     card.innerHTML = `
                         <div class="flex-1">
                             <div class="flex items-center gap-2 mb-1">
-                                <span class="text-[9px] font-black bg-red-900/30 text-red-400 px-2 py-0.5 rounded border border-red-500/20">${a.type}</span>
-                                <h4 class="text-sm font-black text-white uppercase">${membersMap[a.memberId] || 'INCONNU'}</h4>
+                                <span class="text-[9px] font-black bg-red-900/30 text-red-400 px-2 py-0.5 rounded border border-red-500/20">${escapeHtml(a.type)}</span>
+                                <h4 class="text-sm font-black text-white uppercase">${escapeHtml(membersMap[a.member_id] || 'INCONNU')}</h4>
                             </div>
-                            <p class="text-[10px] text-gray-500 font-bold italic">${a.motif}</p>
+                            <p class="text-[10px] text-gray-500 font-bold italic">${escapeHtml(a.motif)}</p>
                         </div>
                         <div class="text-right">
-                            <p class="text-lg font-black text-white">${parseInt(a.montant).toLocaleString()} F</p>
+                            <p class="text-lg font-black text-white">${parseInt(a.montant, 10).toLocaleString()} F</p>
                             <button onclick="payFine('${a.id}')" class="mt-2 bg-emerald-500 hover:bg-emerald-600 text-gray-900 px-3 py-1 rounded-lg text-[9px] font-black transition">PAYER</button>
                         </div>
                     `;
@@ -149,40 +165,34 @@
             if (!caisseId || !memberId || !montant || !motif) return alert("Tous les champs sont requis.");
 
             // Trouver le cycle actif
-            const caisse = tontineData.caisses.find(c => c.id === caisseId);
-            // Pour simplifier, on fetch le cycle actif via l'API caisse
-            const cRes = await fetch(`/caisses/${caisseId}`);
-            const cData = await cRes.json();
-            const cycleId = cData.cycles && cData.cycles.length > 0 ? cData.cycles[0].id : null;
+            const { data: cycles, error: cycleError } = await db.from('cycles').select('id')
+                .eq('caisse_id', caisseId).eq('est_cloture', false)
+                .order('numero_cycle', { ascending: false }).limit(1);
+            if (cycleError) return alert(cycleError.message);
+            const cycleId = cycles.length ? cycles[0].id : null;
 
             if (!cycleId) return alert("Aucun cycle actif pour cette caisse.");
 
             try {
-                const res = await fetch('/amendes', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ caisseId, memberId, cycleId, montant: parseInt(montant), motif, type })
+                const { error } = await db.from('amendes').insert({
+                    caisse_id: caisseId, member_id: memberId, cycle_id: cycleId,
+                    montant: parseInt(montant, 10), motif, type, statut: 'A_PAYER'
                 });
-                if (res.ok) {
-                    alert("Sanction enregistrée !");
-                    fetchFines();
-                }
-            } catch (e) { alert("Erreur"); }
+                if (error) throw error;
+                alert("Sanction enregistrée !");
+                fetchFines();
+            } catch (e) { alert(e.message || "Erreur"); }
         }
 
         async function payFine(id) {
-            const user = JSON.parse(localStorage.getItem('currentUser'));
             try {
-                const res = await fetch(`/amendes/${id}/pay`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ validatedById: user.id })
+                const { error } = await db.rpc('pay_tontine_fine', {
+                    p_fine_id: id
                 });
-                if (res.ok) {
-                    alert("Recouvrement effectué !");
-                    fetchFines();
-                }
-            } catch (e) { alert("Erreur réseau"); }
+                if (error) throw error;
+                alert("Recouvrement effectué !");
+                fetchFines();
+            } catch (e) { alert(e.message || "Erreur réseau"); }
         }
     </script>
 </body>

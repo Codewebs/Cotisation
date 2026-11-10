@@ -2,8 +2,10 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.hilt.android)   // ✅ Obligatoire pour Hilt
     alias(libs.plugins.ksp)           // ✅ Obligatoire pour utiliser ksp()
+    alias(libs.plugins.google.services)
 }
 
 android {
@@ -13,11 +15,17 @@ android {
     defaultConfig {
         applicationId = "com.indiza.cotisation"
         minSdk = 25
-        targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        targetSdk = 36
+        versionCode = 2
+        versionName = "deux kolo"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        val supabaseUrl = providers.gradleProperty("SUPABASE_URL")
+            .orElse(providers.environmentVariable("SUPABASE_URL")).getOrElse("")
+        val supabaseAnonKey = providers.gradleProperty("SUPABASE_ANON_KEY")
+            .orElse(providers.environmentVariable("SUPABASE_ANON_KEY")).getOrElse("")
+        buildConfigField("String", "SUPABASE_URL", "\"$supabaseUrl\"")
+        buildConfigField("String", "SUPABASE_ANON_KEY", "\"$supabaseAnonKey\"")
     }
 
     buildTypes {
@@ -38,6 +46,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.3" // ou la version compatible Compose BOM
@@ -91,13 +100,13 @@ dependencies {
     implementation(libs.accompanist.pager)
     implementation(libs.accompanist.pager.indicators)
 
-    implementation(libs.retrofit.core)
-    implementation(libs.retrofit.moshi)
-    implementation(libs.okhttp.core)
-    implementation(libs.okhttp.logging)
-    implementation(libs.moshi.core)
-    implementation(libs.moshi.kotlin)
-
+    implementation(libs.supabase.auth)
+    implementation(libs.supabase.postgrest)
+    implementation(libs.supabase.realtime)
+    implementation(libs.supabase.storage)
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging)
+    implementation(libs.ktor.client.okhttp)
     implementation(libs.coil.compose)
 
     implementation(libs.work.runtime)

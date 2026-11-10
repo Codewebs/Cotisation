@@ -141,27 +141,58 @@ class TontineDetailViewModel @Inject constructor(
     }
 
     fun deleteCaisse(caisseId: Long, onResult: (Result<Unit>) -> Unit) = viewModelScope.launch {
-        caisseDao.deleteCaisseById(caisseId)
-        onResult(Result.success(Unit))
+        onResult(repository.deleteCaisse(caisseId))
     }
 
     fun generateInviteLink(tontineId: Long, onResult: (String?) -> Unit) = viewModelScope.launch {
         val tontine = tontineDao.getById(tontineId)
-        if (tontine?.remoteId != null) {
-            onResult("https://cotisation.app/join/${tontine.remoteId}")
-        } else {
+        val senderId = sessionDao.getCurrentSession()?.userId
+        if (tontine?.remoteId == null || senderId.isNullOrBlank()) {
+            onResult(null)
+            return@launch
+        }
+        try {
+            val inviteCode = repository.generateInviteLink(tontine.remoteId, senderId)
+            onResult("cotisation://join?code=$inviteCode")
+        } catch (e: Exception) {
             onResult(null)
         }
     }
 
     fun broadcastReport(tontineId: Long, onResult: (Boolean) -> Unit) = viewModelScope.launch {
-        onResult(true)
+        val tontine = tontineDao.getById(tontineId)
+        val senderId = sessionDao.getCurrentSession()?.userId
+        if (tontine?.remoteId == null || senderId.isNullOrBlank()) {
+            onResult(false)
+            return@launch
+        }
+        onResult(
+            runCatching {
+                repository.broadcastReport(tontine.remoteId, senderId)
+            }.isSuccess
+        )
     }
 
     fun addMember(tontineId: Long, nom: String, phone: String, role: Role) = viewModelScope.launch {
         try {
             val matricule = "M-${System.currentTimeMillis().toString().takeLast(4)}"
-            repository.addMemberToTontine(tontineId, nom, phone, role, matricule)
+            val tontine = tontineDao.getById(tontineId)
+            if (tontine?.isOnline == true && tontine.remoteId != null && tontine.syncStatus == SyncStatus.SYNCED) {
+                val member = runCatching {
+                    repository.addOnlineMember(tontine.remoteId, nom, phone, role)
+                }.getOrNull()
+                repository.addMemberToTontine(
+                    tontineId = tontineId,
+                    nom = nom,
+                    phone = phone,
+                    role = role,
+                    matricule = matricule,
+                    remoteId = member?.id,
+                    userId = member?.userId
+                )
+            } else {
+                repository.addMemberToTontine(tontineId, nom, phone, role, matricule)
+            }
         } catch (e: Exception) {
             println("ERROR_ADD_MEMBER: ${e.message}")
         }
@@ -216,6 +247,30 @@ class TontineDetailViewModel @Inject constructor(
         
         syncManager.triggerSync()
         loadTontine(tontineId)
+    }
+
+    fun refreshLiveTontine(tontineId: Long, onResult: (String) -> Unit = {}) {
+        viewModelScope.launch {
+            try {
+                syncManager.triggerSync()
+
+                val tontine = tontineDao.getById(tontineId)
+                if (tontine?.remoteId != null) {
+                    val remoteDetails = repository.getOnlineTontineDetails(tontine.remoteId)
+                    repository.syncOnlineTontineMembers(tontineId, remoteDetails.members.orEmpty())
+
+                    val caisses = caisseDao.getCaissesByTontineSnapshot(tontineId)
+                    caisses.forEach { caisse ->
+                        repository.syncOnlineTransactions(caisse)
+                    }
+                }
+
+                loadTontine(tontineId)
+                onResult("Réunion actualisée en direct")
+            } catch (e: Exception) {
+                onResult("Erreur d'actualisation: ${e.message}")
+            }
+        }
     }
 
     fun getTransactionsForCycles(cycleIds: List<Long>): Flow<List<TransactionEntity>> {

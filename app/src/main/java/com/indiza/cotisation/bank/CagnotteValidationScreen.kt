@@ -407,6 +407,7 @@ fun CagnotteValidationScreen(
         if (showNotifDialog) {
             PostPayoutNotificationDialog(
                 members = tontineMembers,
+                beneficiaryIds = setOf(participant.memberWithUser.member.id),
                 isOnline = isTontineOnline,
                 onDismiss = onDismiss,
                 onSend = { _, _, _ ->

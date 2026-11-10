@@ -119,6 +119,7 @@ fun ActionButton(
 fun CaisseDetailCard(
     caisse: CaisseEntity,
     soldeGlobal: Long = 0L, 
+    showSolde: Boolean = true,
     onClick: () -> Unit,
     onDelete: (() -> Unit)? = null
 ) {
@@ -239,9 +240,9 @@ fun CaisseDetailCard(
                     color = Color.Gray
                 )
                 Text(
-                    text = "$soldeGlobal FCFA",
+                    text = if (showSolde) "$soldeGlobal FCFA" else "Restreint",
                     style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = if (showSolde) MaterialTheme.colorScheme.primary else Color.Gray,
                     fontWeight = FontWeight.Bold
                 )
             }

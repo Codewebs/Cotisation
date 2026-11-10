@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cotisation - Rechercher une Tontine</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+    <script src="/js/supabase-config.js"></script>
+    <script src="/js/supabase-client.js"></script>
+    <script src="/js/realtime.js"></script>
 </head>
 <body class="bg-gray-900 text-white min-h-screen p-4 md:p-8">
     <div class="max-w-4xl mx-auto">
@@ -37,7 +41,11 @@
     </div>
 
     <script>
-        const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+        let currentUser = null;
+        document.addEventListener('DOMContentLoaded', async () => {
+            currentUser = await getCurrentUser().catch(() => null);
+            if (!currentUser) window.location.href = '/login';
+        });
 
         async function searchTontines() {
             const query = document.getElementById('search-input').value;
@@ -48,9 +56,26 @@
             resultsDiv.innerHTML = '<div class="col-span-full text-center py-10 text-cyan-400">Recherche en cours...</div>';
 
             try {
-                const userId = currentUser ? currentUser.id : '';
-                const res = await fetch(`/tontines/search?query=${encodeURIComponent(query)}&userId=${userId}`);
-                const data = await res.json();
+                if (!currentUser) throw new Error('Veuillez vous connecter.');
+                // RLS intentionally hides non-member tontines. This RPC must return
+                // discoverable metadata only; financial tables remain RLS-protected.
+                const { data: results, error } = await db.rpc('search_tontines', { search_term: query.trim() });
+                if (error) throw error;
+                const data = (results || []).map(row => ({
+                    ...row,
+                    id: row.id || row.tontine_id,
+                    libelle: row.libelle || row.tontine_name,
+                    date_debut: row.date_debut || row.date_start,
+                    date_fin: row.date_fin || row.date_end
+                }));
+                const [requestResult, memberResult] = await Promise.all([
+                    db.from('join_requests').select('tontine_id,status').eq('user_id', currentUser.id),
+                    db.from('members').select('tontine_id').eq('user_id', currentUser.id)
+                ]);
+                if (requestResult.error) throw requestResult.error;
+                if (memberResult.error) throw memberResult.error;
+                const requestByTontine = new Map(requestResult.data.map(request => [request.tontine_id, request.status]));
+                const memberships = new Set(memberResult.data.map(member => member.tontine_id));
 
                 resultsDiv.innerHTML = '';
 
@@ -64,32 +89,46 @@
                     card.className = "bg-gray-800 border border-gray-700 p-6 rounded-2xl hover:border-cyan-500/50 transition duration-300 shadow-xl group";
 
                     let actionButton = '';
-                    if (t.membershipStatus === 'MEMBER') {
+                    const membershipStatus = memberships.has(t.id)
+                        ? 'MEMBER'
+                        : (requestByTontine.get(t.id) === 'PENDING' ? 'PENDING' : 'NONE');
+                    if (membershipStatus === 'MEMBER') {
                         actionButton = `<button onclick="window.location.href='/tontine-details?id=${t.id}'" class="w-full mt-6 bg-cyan-500 hover:bg-cyan-600 text-gray-900 py-2 rounded-xl text-sm font-bold transition">VOIR MA TONTINE</button>`;
-                    } else if (t.membershipStatus === 'PENDING') {
-                        actionButton = `<button disabled class="w-full mt-6 bg-gray-700 text-gray-500 py-2 rounded-xl text-sm font-bold cursor-not-allowed">DEMANDE EN ATTENTE</button>`;
+                    } else if (membershipStatus === 'PENDING') {
+                        actionButton = `
+                            <div class="mt-6 flex flex-col gap-2">
+                                <div class="text-center text-xs text-amber-400 font-semibold py-1.5 bg-amber-500/10 rounded-xl border border-amber-500/20">DEMANDE EN ATTENTE DE VALIDATION</div>
+                                <button onclick="cancelJoin('${t.id}')" class="w-full bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 py-2 rounded-xl text-sm font-bold transition flex items-center justify-center gap-2">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                    RETIRER MA DEMANDE
+                                </button>
+                            </div>
+                        `;
                     } else {
                         actionButton = `<button onclick="requestJoin('${t.id}')" class="w-full mt-6 bg-orange-500 hover:bg-orange-600 text-white py-2 rounded-xl text-sm font-bold transition">REJOINDRE LE CERCLE</button>`;
                     }
 
                     card.innerHTML = `
                         <div class="flex justify-between items-start mb-4">
-                            <span class="${t.membershipStatus === 'MEMBER' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-cyan-500/10 text-cyan-400'} text-xs font-bold px-2 py-1 rounded">
-                                ${t.membershipStatus === 'MEMBER' ? 'MEMBRE' : 'PUBLIC'}
+                            <span class="${membershipStatus === 'MEMBER' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-cyan-500/10 text-cyan-400'} text-xs font-bold px-2 py-1 rounded">
+                                ${membershipStatus === 'MEMBER' ? 'MEMBRE' : membershipStatus === 'PENDING' ? 'EN ATTENTE' : 'GROUPE DISPONIBLE'}
                             </span>
-                            <span class="text-gray-500 text-xs">${t.updatedAt ? new Date(parseInt(t.updatedAt)).toLocaleDateString() : 'Récemment'}</span>
+                            <span class="text-gray-500 text-xs">${t.updated_at ? new Date(parseInt(t.updated_at, 10)).toLocaleDateString() : 'Récemment'}</span>
                         </div>
-                        <h3 class="text-xl font-bold text-white mb-2 group-hover:text-cyan-400 transition">${t.libelle}</h3>
+                        <h3 class="text-xl font-bold text-white mb-2 group-hover:text-cyan-400 transition">${escapeHtml(t.libelle)}</h3>
                         <div class="text-sm text-gray-400 space-y-1">
-                            <p>Début: <span class="text-gray-300">${t.dateDebut}</span></p>
-                            <p>Fin: <span class="text-gray-300">${t.dateFin}</span></p>
+                            <p>Exercice: <span class="text-gray-300">${escapeHtml(t.exercice || '—')}</span></p>
+                            <p>Membres: <span class="text-gray-300">${Number(t.member_count || 0)}</span></p>
                         </div>
                         ${actionButton}
                     `;
                     resultsDiv.appendChild(card);
                 });
             } catch (e) {
-                resultsDiv.innerHTML = '<div class="col-span-full text-center py-20 text-red-400 text-sm">Erreur serveur lors de la recherche</div>';
+                const message = e.code === 'PGRST202'
+                    ? 'La recherche de groupes nécessite le RPC sécurisé search_tontines (métadonnées uniquement) dans la migration Supabase.'
+                    : (e.message || 'Erreur lors de la recherche');
+                resultsDiv.innerHTML = `<div class="col-span-full text-center py-20 text-red-400 text-sm">${escapeHtml(message)}</div>`;
             }
         }
 
@@ -101,21 +140,29 @@
             }
 
             try {
-                const res = await fetch(`/tontines/${tontineId}/join`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId: currentUser.id })
+                const { error } = await db.from('join_requests').insert({
+                    tontine_id: tontineId, user_id: currentUser.id, status: 'PENDING'
                 });
-
-                if (res.ok) {
-                    alert("Votre demande d'adhésion a été envoyée. Veuillez attendre la validation d'un membre du bureau.");
-                    searchTontines(); // Rafraîchir
-                } else {
-                    const err = await res.json();
-                    alert(err.error);
-                }
+                if (error) throw error;
+                alert("Votre demande d'adhésion a été envoyée.");
+                searchTontines();
             } catch (e) {
-                alert("Erreur réseau");
+                alert(e.message || "Erreur lors de la demande");
+            }
+        }
+
+        async function cancelJoin(tontineId) {
+            if (!currentUser) return;
+            if (!confirm("Voulez-vous vraiment retirer votre demande d'adhésion ?")) return;
+
+            try {
+                const { error } = await db.from('join_requests').delete()
+                    .eq('tontine_id', tontineId).eq('user_id', currentUser.id).eq('status', 'PENDING');
+                if (error) throw error;
+                alert("Votre demande d'adhésion a été retirée.");
+                searchTontines();
+            } catch (e) {
+                alert(e.message || "Erreur lors du retrait de la demande");
             }
         }
     </script>

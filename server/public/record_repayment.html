@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cotisation - Enregistrer un Remboursement</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+    <script src="/js/supabase-config.js"></script>
+    <script src="/js/supabase-client.js"></script>
+    <script src="/js/realtime.js"></script>
 </head>
 <body class="bg-gray-900 text-white min-h-screen p-4 md:p-8 flex items-center justify-center">
     <div class="max-w-2xl w-full bg-gray-800 rounded-[2.5rem] shadow-2xl border border-gray-700 p-8 md:p-12">
@@ -54,8 +58,6 @@
     <script>
         const urlParams = new URLSearchParams(window.location.search);
         const loanId = urlParams.get('loanId');
-        let tontineId = null;
-
         document.addEventListener('DOMContentLoaded', () => {
             if (!loanId) { window.location.href = '/profile'; return; }
             fetchLoanDetails();
@@ -63,30 +65,17 @@
 
         async function fetchLoanDetails() {
             try {
-                // Pour simplifier, on récupère le prêt depuis l'API de tontine qui ramène tout
-                // On pourrait aussi faire un GET /prets/:id
-                // On va simuler en cherchant dans la liste des prêts de la tontine
-                // Mais pour le moment on va demander au serveur de nous donner les infos du prêt
-                // Je vais tricher un peu en utilisant l'ID tontine passé en URL si présent ou en cherchant
-
-                // On va supposer qu'on a un endpoint direct ou on passe par la tontine
-                // Ajoutons un petit fix dans index.js pour GET /prets/:id
-                const res = await fetch(`/tontines/search?query=`); // Un peu lourd
-                // En fait, on va juste utiliser le localStorage ou l'URL
-                // Amélioration de index.js requise pour GET /prets/:id
-
-                // Pour ce test, on va faire un fetch direct (j'ai rajouté l'endpoint dans ma tête, je vais l'ajouter en vrai)
-                const loanRes = await fetch(`/prets/${loanId}`);
-                const loan = await loanRes.json();
-
-                document.getElementById('remaining-amount').innerText = `${parseInt(loan.montantRestant).toLocaleString()} F`;
-                document.getElementById('montant').value = loan.montantRestant;
-
-                // Nom de l'emprunteur
-                const tRes = await fetch(`/tontines/${loan.Caisse.tontineId}`);
-                const tontine = await tRes.json();
-                const member = tontine.members.find(m => m.id === loan.memberId);
-                document.getElementById('borrower-name').innerText = member ? member.nomSaisi : (loan.nomEmprunteurExterne || 'Inconnu');
+                const { data: loan, error } = await db.from('prets')
+                    .select('*,caisses(libelle,tontine_id)').eq('id', loanId).single();
+                if (error) throw error;
+                document.getElementById('remaining-amount').innerText = `${parseInt(loan.montant_restant || loan.montant_principal, 10).toLocaleString()} F`;
+                document.getElementById('montant').value = loan.montant_restant || loan.montant_principal;
+                let borrower = loan.nom_emprunteur_externe || 'Inconnu';
+                if (loan.member_id) {
+                    const { data: member } = await db.from('members').select('nom_saisi').eq('id', loan.member_id).maybeSingle();
+                    if (member) borrower = member.nom_saisi;
+                }
+                document.getElementById('borrower-name').innerText = borrower;
 
             } catch (e) { console.error(e); }
         }
@@ -94,30 +83,21 @@
         async function submitRepayment() {
             const montant = document.getElementById('montant').value;
             const motif = document.getElementById('motif').value;
-            const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+            const currentUser = await getCurrentUser();
 
             if (!montant || montant <= 0) return alert("Montant invalide");
             if (!currentUser) return alert("Session expirée.");
 
             try {
-                const res = await fetch(`/prets/${loanId}/repay`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        montant: parseInt(montant),
-                        validatedById: currentUser.id,
-                        motif: motif || "Remboursement de prêt"
-                    })
+                const { error } = await db.rpc('repay_tontine_loan', {
+                    p_loan_id: loanId,
+                    p_amount: parseInt(montant, 10),
+                    p_motif: motif || null
                 });
-
-                if (res.ok) {
-                    alert("Remboursement validé !");
-                    history.back();
-                } else {
-                    const err = await res.json();
-                    alert(err.error);
-                }
-            } catch (e) { alert("Erreur serveur"); }
+                if (error) throw error;
+                alert("Remboursement validé !");
+                history.back();
+            } catch (e) { alert(e.message || "Erreur lors du remboursement"); }
         }
     </script>
 </body>

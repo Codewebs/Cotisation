@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cotisation - Mon Profil</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+    <script src="/js/supabase-config.js"></script>
+    <script src="/js/supabase-client.js"></script>
+    <script src="/js/realtime.js"></script>
 </head>
 <body class="bg-gray-900 text-white min-h-screen p-4 md:p-8">
     <div class="max-w-4xl mx-auto">
@@ -70,19 +74,20 @@
     </div>
 
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const user = JSON.parse(localStorage.getItem('currentUser'));
+        document.addEventListener('DOMContentLoaded', async () => {
+            const user = await getCurrentUser().catch(() => null);
             if (!user) {
                 window.location.href = '/login';
                 return;
             }
 
             // UI User Info
-            document.getElementById('user-name').innerText = user.nom;
-            document.getElementById('user-initial').innerText = user.nom.charAt(0).toUpperCase();
-            document.getElementById('user-matricule').innerText = user.matricule;
-            document.getElementById('user-phone').innerText = user.phone;
+            document.getElementById('user-name').innerText = user.nom || user.email || '';
+            document.getElementById('user-initial').innerText = (user.nom || user.email || '?').charAt(0).toUpperCase();
+            document.getElementById('user-matricule').innerText = user.matricule || '—';
+            document.getElementById('user-phone').innerText = user.phone || '—';
 
+            window.addEventListener('new_notification', () => fetchNotifications(user.id));
             fetchTontines(user.id);
             fetchNotifications(user.id);
             fetchSignatureStats(user.id);
@@ -90,14 +95,20 @@
 
         async function fetchSignatureStats(userId) {
             try {
-                const res = await fetch(`/users/${userId}/signature-stats`);
-                const stats = await res.json();
-
-                if (stats.count > 0) {
+                const start = new Date();
+                start.setDate(1);
+                start.setHours(0, 0, 0, 0);
+                const { data: transactions, error } = await db.from('transactions')
+                    .select('montant').eq('validated_by_id', userId)
+                    .gte('date_transaction', start.getTime());
+                if (error) throw error;
+                const count = transactions.length;
+                const totalAmount = transactions.reduce((sum, tx) => sum + Number(tx.montant || 0), 0);
+                if (count > 0) {
                     document.getElementById('admin-stats-section').classList.remove('hidden');
-                    document.getElementById('sig-count').innerText = stats.count;
-                    document.getElementById('sig-volume').innerText = `${stats.totalAmount.toLocaleString()} F`;
-                    document.getElementById('sig-month').innerText = stats.month.toUpperCase();
+                    document.getElementById('sig-count').innerText = count;
+                    document.getElementById('sig-volume').innerText = `${totalAmount.toLocaleString()} F`;
+                    document.getElementById('sig-month').innerText = start.toLocaleString('fr-FR', { month: 'long' }).toUpperCase();
                 }
             } catch (e) { console.error(e); }
         }
@@ -105,8 +116,10 @@
         async function fetchNotifications(userId) {
             const list = document.getElementById('notification-list');
             try {
-                const res = await fetch(`/users/${userId}/notifications`);
-                const notifications = await res.json();
+                const { data: notifications, error } = await db.from('notifications')
+                    .select('*').eq('user_id', userId).order('created_at', { ascending: false });
+                if (error) throw error;
+                list.innerHTML = '';
 
                 if (notifications.length === 0) {
                     list.innerHTML = '<p class="text-gray-600 text-sm italic">Aucune notification.</p>';
@@ -115,18 +128,19 @@
 
                 notifications.forEach(n => {
                     const card = document.createElement('div');
-                    card.className = `p-4 rounded-2xl border transition cursor-pointer flex justify-between items-center ${n.isRead ? 'bg-gray-800/20 border-gray-800' : 'bg-cyan-500/5 border-cyan-500/30'}`;
+                    card.className = `p-4 rounded-2xl border transition cursor-pointer flex justify-between items-center ${n.is_read ? 'bg-gray-800/20 border-gray-800' : 'bg-cyan-500/5 border-cyan-500/30'}`;
                     card.onclick = () => {
-                        if (n.type === 'RECEIPT') window.location.href = `/receipt?txId=${n.referenceId}`;
-                        if (n.type === 'REPORT') window.location.href = `/tontine-details?id=${n.referenceId}`;
+                        if (n.type === 'RECEIPT') window.location.href = `/receipt?txId=${n.reference_id}`;
+                        else if (n.type === 'CYCLE_OPEN' || n.type === 'CYCLE_CLOSE') window.location.href = `/caisse-details?id=${n.reference_id}`;
+                        else if (n.reference_id) window.location.href = `/tontine-details?id=${n.reference_id}`;
                         markAsRead(n.id);
                     };
                     card.innerHTML = `
                         <div>
-                            <p class="text-sm font-bold text-white">${n.title}</p>
-                            <p class="text-xs text-gray-500">${n.message}</p>
+                            <p class="text-sm font-bold text-white">${escapeHtml(n.title)}</p>
+                            <p class="text-xs text-gray-500">${escapeHtml(n.message)}</p>
                         </div>
-                        ${!n.isRead ? '<span class="w-2 h-2 bg-cyan-500 rounded-full"></span>' : ''}
+                        ${!n.is_read ? '<span class="w-2 h-2 bg-cyan-500 rounded-full"></span>' : ''}
                     `;
                     list.appendChild(card);
                 });
@@ -134,7 +148,8 @@
         }
 
         async function markAsRead(id) {
-            fetch(`/notifications/${id}/read`, { method: 'POST' });
+            const { error } = await db.from('notifications').update({ is_read: true }).eq('id', id);
+            if (error) console.error(error);
         }
 
         async function fetchTontines(userId) {
@@ -142,8 +157,17 @@
             const empty = document.getElementById('empty-state');
 
             try {
-                const res = await fetch(`/users/${userId}/tontines`);
-                const tontines = await res.json();
+                const { data: memberships, error: memberError } = await db.from('members')
+                    .select('tontine_id').eq('user_id', userId);
+                if (memberError) throw memberError;
+                const ids = memberships.map(m => m.tontine_id);
+                if (!ids.length) {
+                    empty.classList.remove('hidden');
+                    return;
+                }
+                const { data: tontines, error } = await db.from('tontines')
+                    .select('*').in('id', ids);
+                if (error) throw error;
 
                 if (tontines.length === 0) {
                     empty.classList.remove('hidden');
@@ -157,12 +181,12 @@
                     card.innerHTML = `
                         <div class="flex justify-between items-start mb-4">
                             <span class="bg-emerald-500/10 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded border border-emerald-500/20">MEMBRE</span>
-                            <span class="text-gray-500 text-xs">${t.exercice || '---'}</span>
+                            <span class="text-gray-500 text-xs">${escapeHtml(t.exercice || '---')}</span>
                         </div>
-                        <h3 class="text-xl font-bold text-white mb-2 group-hover:text-cyan-400 transition">${t.libelle}</h3>
+                        <h3 class="text-xl font-bold text-white mb-2 group-hover:text-cyan-400 transition">${escapeHtml(t.libelle)}</h3>
                         <div class="text-xs text-gray-500 flex items-center gap-4">
-                            <span>📅 ${t.dateDebut}</span>
-                            <span>🏁 ${t.dateFin}</span>
+                            <span>📅 ${escapeHtml(t.date_debut)}</span>
+                            <span>🏁 ${escapeHtml(t.date_fin)}</span>
                         </div>
                     `;
                     list.appendChild(card);
@@ -174,7 +198,7 @@
 
         function logout() {
             localStorage.removeItem('currentUser');
-            window.location.href = '/login';
+            db.auth.signOut().finally(() => window.location.href = '/login');
         }
     </script>
 </body>

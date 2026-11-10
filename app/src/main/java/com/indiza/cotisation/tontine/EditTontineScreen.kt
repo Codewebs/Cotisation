@@ -60,6 +60,15 @@ fun EditTontineScreen(
         }
     ) { padding ->
         Column(modifier = Modifier.padding(padding).padding(16.dp)) {
+            state.error?.let { error ->
+                Text(
+                    text = error,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(Modifier.height(8.dp))
+            }
+
             OutlinedTextField(
                 value = state.libelle,
                 onValueChange = viewModel::onLibelleChange,
@@ -121,6 +130,43 @@ fun EditTontineScreen(
                     Switch(
                         checked = state.isAnonymous,
                         onCheckedChange = { viewModel.onAnonymousChange(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = NeonCyan,
+                            checkedTrackColor = NeonCyan.copy(alpha = 0.5f)
+                        )
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .padding(16.dp)
+                        .fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "Masquer les infos globales aux membres",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            "Finance, évolution, soldes et paramètres seront masqués pour les simples membres.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = state.hideInfoForSimpleMembers,
+                        onCheckedChange = { viewModel.onHideInfoForSimpleMembersChange(it) },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = NeonCyan,
                             checkedTrackColor = NeonCyan.copy(alpha = 0.5f)

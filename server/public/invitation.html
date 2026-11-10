@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cotisation - Invitation</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+    <script src="/js/supabase-config.js"></script>
+    <script src="/js/supabase-client.js"></script>
+    <script src="/js/realtime.js"></script>
 </head>
 <body class="bg-gray-900 text-white min-h-screen flex items-center justify-center p-6">
     <div id="loading" class="text-cyan-400 font-bold animate-pulse">Chargement de l'invitation...</div>
@@ -20,8 +24,7 @@
         <div class="bg-gray-700/30 rounded-2xl p-6 border border-gray-600 mb-10">
             <h2 id="tontine-name" class="text-xl font-bold text-cyan-400 mb-2">NOM DE LA TONTINE</h2>
             <div class="text-xs text-gray-500 space-y-1">
-                <p>Début: <span id="tontine-start" class="text-gray-300">--</span></p>
-                <p>Fin: <span id="tontine-end" class="text-gray-300">--</span></p>
+                <p>Membres: <span id="member-count" class="text-gray-300">—</span></p>
             </div>
         </div>
 
@@ -40,7 +43,6 @@
 
     <script>
         const code = new URLSearchParams(window.location.search).get('code');
-        let inviteData = null;
 
         document.addEventListener('DOMContentLoaded', async () => {
             if (!code) {
@@ -48,27 +50,31 @@
                 window.location.href = '/';
                 return;
             }
-
             try {
-                const res = await fetch(`/invites/${code}`);
-                if (!res.ok) throw new Error("Invitation invalide");
-                inviteData = await res.json();
-
-                document.getElementById('inviter-name').innerText = `Vous avez été invité par ${inviteData.sender.nom}`;
-                document.getElementById('tontine-name').innerText = inviteData.Tontine.libelle;
-                document.getElementById('tontine-start').innerText = inviteData.Tontine.dateDebut;
-                document.getElementById('tontine-end').innerText = inviteData.Tontine.dateFin;
-
+                const user = await getCurrentUser().catch(() => null);
+                if (!user) {
+                    window.location.href = `/login?redirect=${encodeURIComponent(window.location.href)}`;
+                    return;
+                }
+                const { data, error } = await db.rpc('get_tontine_invite', { invite_code: code });
+                if (error) throw error;
+                const invite = Array.isArray(data) ? data[0] : data;
+                if (!invite) throw new Error("Invitation introuvable ou expirée.");
+                document.getElementById('inviter-name').innerText = invite.sender_name || invite.sender_nom
+                    ? `Vous avez été invité par ${invite.sender_name || invite.sender_nom}`
+                    : "Invitation Cotisation";
+                document.getElementById('tontine-name').innerText = invite.libelle || invite.tontine_name || "Tontine";
+                document.getElementById('member-count').innerText = Number(invite.member_count || 0);
                 document.getElementById('loading').classList.add('hidden');
                 document.getElementById('content').classList.remove('hidden');
-            } catch (e) {
-                alert(e.message);
+            } catch (error) {
+                alert(error.message || "Invitation invalide.");
                 window.location.href = '/';
             }
         });
 
         async function joinTontine() {
-            const user = JSON.parse(localStorage.getItem('currentUser'));
+            const user = await getCurrentUser().catch(() => null);
             if (!user) {
                 alert("Veuillez vous connecter d'abord.");
                 window.location.href = '/login?redirect=' + encodeURIComponent(window.location.href);
@@ -76,21 +82,12 @@
             }
 
             try {
-                const res = await fetch(`/invites/${code}/join`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ userId: user.id })
-                });
-
-                if (res.ok) {
-                    document.getElementById('content').classList.add('hidden');
-                    document.getElementById('success').classList.remove('hidden');
-                } else {
-                    const error = await res.json();
-                    alert(error.error);
-                }
+                const { error } = await db.rpc('join_tontine_with_invite', { invite_code: code });
+                if (error) throw error;
+                document.getElementById('content').classList.add('hidden');
+                document.getElementById('success').classList.remove('hidden');
             } catch (e) {
-                alert("Erreur réseau.");
+                alert(e.message || "Erreur lors de l'envoi de la demande.");
             }
         }
     </script>

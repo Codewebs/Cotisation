@@ -84,7 +84,6 @@ fun TransactionScreen(
     val context = androidx.compose.ui.platform.LocalContext.current
     val montantAverser = (caisse.montantFixe ?: 0L) * participant.nombreParts
 
-    // On initialise le champ de saisie avec ce résultat
     var montantSaisi by remember { mutableStateOf(montantAverser.toString()) }
 
     val detteMembre by viewModel.getEtatDetteMembre(caisse.id, participant.memberWithUser.member.id).collectAsState(initial = 0L)
@@ -105,14 +104,16 @@ fun TransactionScreen(
     val penaliteEchec = if (appliquerEchec) (caisse.penaliteEchecFixe ?: 0L) else 0L
     val totalGlobal = base + penaliteRetard + penaliteEchec
 
-// Animation d'échelle pour le check vert
     val scale by animateFloatAsState(
         targetValue = if (isSuccess) 1.2f else 0.0f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
         label = "SuccessAnimation"
     )
 
-    CosmicBackground {
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = Color.White
+    ) {
         Box(modifier = Modifier.fillMaxSize()) {
             Column(
                 modifier = Modifier
@@ -137,12 +138,12 @@ fun TransactionScreen(
                         Text(
                             participant.memberWithUser.member.nomSaisi,
                             style = MaterialTheme.typography.titleMedium,
-                            color = Color.White,
+                            color = Color.Black,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
                             "Cotisation : ${caisse.libelle}",
-                            color = GlassWhite,
+                            color = Color.Black,
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
@@ -151,7 +152,7 @@ fun TransactionScreen(
                 Spacer(Modifier.height(16.dp))
 
                 Surface(
-                    color = Color.White.copy(alpha = 0.05f),
+                    color = Color.LightGray.copy(alpha = 0.3f),
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -161,18 +162,18 @@ fun TransactionScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text("État des dettes", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
+                            Text("État des dettes", color = Color.Black, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
                             Text(
                                 "${detteMembre} FCFA",
-                                color = if (detteMembre < 0) Color.Red else Color.Green,
+                                color = if (detteMembre < 0) Color.Red else Color.DarkGray,
                                 fontWeight = FontWeight.Bold,
                                 style = MaterialTheme.typography.bodyMedium
                             )
                         }
 
                         Column(horizontalAlignment = Alignment.End) {
-                            Text("Jour limite", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
-                            Text("Le $jourLimite du mois", color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
+                            Text("Jour limite", color = Color.Black, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                            Text("Le $jourLimite du mois", color = Color.Black, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
@@ -180,7 +181,7 @@ fun TransactionScreen(
                 Spacer(Modifier.height(8.dp))
 
                 Surface(
-                    color = Color.White.copy(alpha = 0.05f),
+                    color = Color.LightGray.copy(alpha = 0.3f),
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -190,42 +191,42 @@ fun TransactionScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.ConfirmationNumber, contentDescription = null, tint = AfroGold, modifier = Modifier.size(14.dp))
+                            Icon(Icons.Default.ConfirmationNumber, contentDescription = null, tint = Color.Black, modifier = Modifier.size(14.dp))
                             Spacer(Modifier.width(6.dp))
                             Text(
                                 text = "${participant.nombreParts} part${if (participant.nombreParts > 1) "s" else ""} à cotiser",
-                                color = AfroGold,
+                                color = Color.Black,
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Bold
                             )
                         }
                         Column(horizontalAlignment = Alignment.End) {
-                            Text("Montant par part", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
-                            Text("${caisse.montantFixe} FCFA", color = Color.White, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+                            Text("Montant par part", color = Color.Black, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                            Text("${caisse.montantFixe} FCFA", color = Color.Black, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
                         }
                     }
                 }
 
                 Spacer(Modifier.height(16.dp))
 
-                Text("MONTANT À ENCAISSER", style = MaterialTheme.typography.labelMedium, color = NeonCyan, fontWeight = FontWeight.Bold)
+                Text("MONTANT À ENCAISSER", style = MaterialTheme.typography.labelMedium, color = Color.Black, fontWeight = FontWeight.Bold)
                 OutlinedTextField(
                     value = montantSaisi,
                     onValueChange = { if (it.all { char -> char.isDigit() }) montantSaisi = it },
                     modifier = Modifier.fillMaxWidth(),
-                    textStyle = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Black, color = NeonCyan),
-                    suffix = { Text("FCFA", color = NeonCyan, fontWeight = FontWeight.Bold) },
+                    textStyle = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Black, color = Color.Black),
+                    suffix = { Text("FCFA", color = Color.Black, fontWeight = FontWeight.Bold) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = NeonCyan,
-                        unfocusedBorderColor = Color.White.copy(alpha = 0.3f),
-                        focusedTextColor = NeonCyan,
-                        unfocusedTextColor = Color.White
+                        unfocusedBorderColor = Color.Black.copy(alpha = 0.3f),
+                        focusedTextColor = Color.Black,
+                        unfocusedTextColor = Color.Black
                     ),
                     trailingIcon = {
                         if (montantSaisi != montantAverser.toString()) {
                             IconButton(onClick = { montantSaisi = montantAverser.toString() }) {
-                                Icon(Icons.Default.Refresh, "Réinitialiser", tint = AfroGold, modifier = Modifier.size(18.dp))
+                                Icon(Icons.Default.Refresh, "Réinitialiser", tint = Color.Black, modifier = Modifier.size(18.dp))
                             }
                         }
                     }
@@ -237,7 +238,7 @@ fun TransactionScreen(
                     if (caisse.penaliteRetardFixe != null) {
                         PenaltyItem(
                             label = "Pénalité de retard",
-                            labelColor = SwitchColor1,
+                            labelColor = Color.Black,
                             montant = caisse.penaliteRetardFixe,
                             checked = appliquerRetard,
                             onCheckedChange = { appliquerRetard = it },
@@ -248,7 +249,7 @@ fun TransactionScreen(
                     if (caisse.penaliteEchecFixe != null) {
                         PenaltyItem(
                             label = "Pénalité d'échec (non-versement)",
-                            labelColor = SwitchColor1,
+                            labelColor = Color.Black,
                             montant = caisse.penaliteEchecFixe,
                             checked = appliquerEchec,
                             onCheckedChange = { appliquerEchec = it },
@@ -259,47 +260,47 @@ fun TransactionScreen(
 
                 Card(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.05f)),
-                    border = BorderStroke(1.dp, NeonCyan.copy(alpha = 0.2f)),
+                    colors = CardDefaults.cardColors(containerColor = Color.LightGray.copy(alpha = 0.2f)),
+                    border = BorderStroke(1.dp, Color.Black.copy(alpha = 0.2f)),
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-                        Text("RÉSUMÉ À PERCEVOIR", style = MaterialTheme.typography.labelMedium, color = Color.Gray, fontWeight = FontWeight.Bold)
+                        Text("RÉSUMÉ À PERCEVOIR", style = MaterialTheme.typography.labelMedium, color = Color.Black, fontWeight = FontWeight.Bold)
 
                         Spacer(Modifier.height(8.dp))
 
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Cotisation (${participant.nombreParts} parts)", color = Color.White, style = MaterialTheme.typography.bodyMedium)
-                            Text("$base FCFA", color = Color.White, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                            Text("Cotisation (${participant.nombreParts} parts)", color = Color.Black, style = MaterialTheme.typography.bodyMedium)
+                            Text("$base FCFA", color = Color.Black, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                         }
 
                         if (appliquerRetard) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Pénalité de retard", color = Color.Red.copy(alpha = 0.8f), style = MaterialTheme.typography.bodyMedium)
-                                Text("+ $penaliteRetard FCFA", color = Color.Red.copy(alpha = 0.8f), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                Text("Pénalité de retard", color = Color.Red, style = MaterialTheme.typography.bodyMedium)
+                                Text("+ $penaliteRetard FCFA", color = Color.Red, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                             }
                         }
 
                         if (appliquerEchec) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Pénalité d'échec", color = Color.Red.copy(alpha = 0.8f), style = MaterialTheme.typography.bodyMedium)
-                                Text("+ $penaliteEchec FCFA", color = Color.Red.copy(alpha = 0.8f), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                Text("Pénalité d'échec", color = Color.Red, style = MaterialTheme.typography.bodyMedium)
+                                Text("+ $penaliteEchec FCFA", color = Color.Red, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                             }
                         }
 
-                        Divider(Modifier.padding(vertical = 8.dp), color = Color.White.copy(alpha = 0.1f))
+                        Divider(Modifier.padding(vertical = 8.dp), color = Color.Black.copy(alpha = 0.1f))
 
                         Row(
                             Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("TOTAL À ENCAISSER", fontWeight = FontWeight.Bold, color = NeonCyan, style = MaterialTheme.typography.labelMedium)
+                            Text("TOTAL À ENCAISSER", fontWeight = FontWeight.Bold, color = Color.Black, style = MaterialTheme.typography.labelMedium)
                             Text(
                                 "$totalGlobal FCFA",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.ExtraBold,
-                                color = NeonCyan
+                                color = Color.Black
                             )
                         }
                     }
@@ -319,20 +320,20 @@ fun TransactionScreen(
                             onDismiss()
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.textButtonColors(contentColor = Color.Red.copy(alpha = 0.8f))
+                        colors = ButtonDefaults.textButtonColors(contentColor = Color.Red)
                     ) {
-                        Icon(Icons.Default.Block, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Block, contentDescription = null, tint = Color.Red, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("Le membre n'a pas encore cotisé pour le cycle", style = MaterialTheme.typography.labelMedium)
+                        Text("Le membre n'a pas encore cotisé pour le cycle", color = Color.Red, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                     }
 
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        OutlinedButton(
+                        Button(
                             onClick = onDismiss,
                             modifier = Modifier.weight(1f),
-                            border = BorderStroke(1.dp, Color.Gray)
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.LightGray)
                         ) {
-                            Text("ANNULER", color = Color.White, style = MaterialTheme.typography.labelLarge)
+                            Text("ANNULER", color = Color.Black, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
                         }
                         Button(
                             onClick = {
@@ -353,13 +354,13 @@ fun TransactionScreen(
             if (showConfirmDialog) {
                 AlertDialog(
                     onDismissRequest = { showConfirmDialog = false },
-                    containerColor = Color(0xFF1A1A1A),
+                    containerColor = Color.White,
                     title = {
-                        Text("Confirmer la transaction", color = Color.White)
+                        Text("Confirmer la transaction", color = Color.Black, fontWeight = FontWeight.Bold)
                     },
                     text = {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("Voulez-vous enregistrer cette cotisation ?", color = GlassWhite)
+                            Text("Voulez-vous enregistrer cette cotisation ?", color = Color.Black)
 
                             if (appliquerRetard || appliquerEchec) {
                                 Surface(
@@ -368,9 +369,9 @@ fun TransactionScreen(
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Column(Modifier.padding(8.dp)) {
-                                        Text("Pénalités incluses :", color = Color.Red, style = MaterialTheme.typography.labelMedium)
-                                        if (appliquerRetard) Text("• Retard: ${caisse.penaliteRetardFixe} FCFA", color = Color.White, style = MaterialTheme.typography.bodySmall)
-                                        if (appliquerEchec) Text("• Échec: ${caisse.penaliteEchecFixe} FCFA", color = Color.White, style = MaterialTheme.typography.bodySmall)
+                                        Text("Pénalités incluses :", color = Color.Red, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                        if (appliquerRetard) Text("• Retard: ${caisse.penaliteRetardFixe} FCFA", color = Color.Black, style = MaterialTheme.typography.bodySmall)
+                                        if (appliquerEchec) Text("• Échec: ${caisse.penaliteEchecFixe} FCFA", color = Color.Black, style = MaterialTheme.typography.bodySmall)
                                     }
                                 }
                             }
@@ -378,7 +379,7 @@ fun TransactionScreen(
                             Text(
                                 "Total final : $totalGlobal FCFA",
                                 fontWeight = FontWeight.Bold,
-                                color = NeonCyan,
+                                color = Color.Black,
                                 modifier = Modifier.padding(top = 8.dp)
                             )
                         }
@@ -409,12 +410,12 @@ fun TransactionScreen(
                             enabled = !isProcessing,
                             colors = ButtonDefaults.buttonColors(containerColor = NeonCyan)
                         ) {
-                            Text(if (isProcessing) "Traitement..." else "Confirmer", color = Color.Black)
+                            Text(if (isProcessing) "Traitement..." else "Confirmer", color = Color.Black, fontWeight = FontWeight.Bold)
                         }
                     },
                     dismissButton = {
                         TextButton(onClick = { showConfirmDialog = false }) {
-                            Text("Annuler", color = Color.White)
+                            Text("Annuler", color = Color.Black, fontWeight = FontWeight.Bold)
                         }
                     }
                 )
@@ -450,6 +451,7 @@ fun TransactionScreen(
                             "Transaction enregistrée !",
                             color = Color.White,
                             style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
                             modifier = Modifier.scale(scale)
                         )
                     }
@@ -469,12 +471,12 @@ fun PenaltyItem(
     label: String,
     montant: Long,
     checked: Boolean,
-    labelColor: Color = Color.LightGray,
+    labelColor: Color = Color.Black,
     onCheckedChange: (Boolean) -> Unit,
     isWarning: Boolean
 ) {
     Surface(
-        color = if (checked) Color.Red.copy(alpha = 0.1f) else Color.White.copy(alpha = 0.05f),
+        color = if (checked) Color.Red.copy(alpha = 0.1f) else Color.LightGray.copy(alpha = 0.3f),
         shape = RoundedCornerShape(12.dp),
         border = BorderStroke(1.dp, if (checked) Color.Red.copy(alpha = 0.4f) else Color.Transparent),
         modifier = Modifier.fillMaxWidth().clickable { onCheckedChange(!checked) }
@@ -486,11 +488,11 @@ fun PenaltyItem(
             Checkbox(
                 checked = checked,
                 onCheckedChange = onCheckedChange,
-                colors = CheckboxDefaults.colors(checkedColor = labelColor)
+                colors = CheckboxDefaults.colors(checkedColor = Color.Black)
             )
             Column(modifier = Modifier.weight(1f)) {
                 Text(label, color = labelColor, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
-                Text("${montant} FCFA", color = if (checked) Color.Red else Color.Gray, style = MaterialTheme.typography.labelSmall)
+                Text("${montant} FCFA", color = if (checked) Color.Red else Color.DarkGray, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
             }
             if (isWarning && !checked) {
                 Icon(Icons.Default.Warning, "Attention", tint = AfroGold, modifier = Modifier.size(16.dp))
@@ -498,4 +500,3 @@ fun PenaltyItem(
         }
     }
 }
-

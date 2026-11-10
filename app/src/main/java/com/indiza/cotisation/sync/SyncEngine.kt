@@ -2,21 +2,27 @@ package com.indiza.cotisation.sync
 
 import com.indiza.cotisation.caisses.CaisseDao
 import com.indiza.cotisation.caisses.toSyncDto
+import com.indiza.cotisation.bank.CycleDao
+import com.indiza.cotisation.bank.TransactionDao
 import com.indiza.cotisation.network.RemoteApi
 import com.indiza.cotisation.tontine.TontineDao
+import com.indiza.cotisation.tontine.TontineMemberDao
+import com.indiza.cotisation.tontine.TransactionApiDto
+import com.indiza.cotisation.tontine.transactionRemoteId
 import com.indiza.cotisation.tontine.toSyncDto
-import com.indiza.cotisation.users.UserDao
-import com.indiza.cotisation.users.UserDto
-import com.indiza.cotisation.users.UserEntity
+import io.github.jan.supabase.gotrue.auth
 import javax.inject.Inject
 
 class SyncEngine @Inject constructor (
     private val tontineDao: TontineDao,
     private val caisseDao: CaisseDao,
-    private val userDao: UserDao,
+    private val transactionDao: TransactionDao,
+    private val cycleDao: CycleDao,
+    private val tontineMemberDao: TontineMemberDao,
     private val sessionDao: com.indiza.cotisation.users.SessionDao,
     private val syncQueueDao: SyncQueueDao,
     private val remoteApi: RemoteApi,
+    private val supabase: io.github.jan.supabase.SupabaseClient,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) {
 
@@ -32,6 +38,8 @@ class SyncEngine @Inject constructor (
                 when (action.entityType) {
                     "TONTINE" -> syncTontine(action)
                     "CAISSE" -> syncCaisse(action)
+                    "MEMBER" -> syncMember(action)
+                    "TRANSACTION" -> syncTransaction(action)
                 }
                 syncQueueDao.remove(action)
                 println("DEBUG_SYNC: Action ${action.entityType} terminée avec succès")
@@ -56,7 +64,8 @@ class SyncEngine @Inject constructor (
 
     private suspend fun syncTontine(action: SyncQueueEntity) {
         val tontine = tontineDao.getById(action.entityLocalId) ?: return
-        val currentUserId = sessionDao.getCurrentSession()?.userId
+        supabase.auth.awaitInitialization()
+        val currentUserId = supabase.auth.currentUserOrNull()?.id ?: sessionDao.getCurrentSession()?.userId ?: error("No authenticated user for sync")
         println("DEBUG_SYNC: Sync TONTINE: ${tontine.libelle} (RemoteID: ${tontine.remoteId})")
 
         when (action.action) {
@@ -120,16 +129,46 @@ class SyncEngine @Inject constructor (
         }
     }
 
+    private suspend fun syncTransaction(action: SyncQueueEntity) {
+        val transaction = transactionDao.getTransactionById(action.entityLocalId) ?: return
+        val caisse = caisseDao.getById(transaction.caisseId)
+            ?: error("Caisse locale introuvable pour la transaction ${transaction.id}")
+        val remoteCaisseId = caisse.remoteId
+            ?: error("Caisse non synchronisée pour la transaction ${transaction.id}")
+        val member = tontineMemberDao.getMemberById(transaction.memberId)
+            ?: error("Membre local introuvable pour la transaction ${transaction.id}")
+        val remoteMemberId = member.remoteId ?: member.userId
+            ?: error("Membre non synchronisé pour la transaction ${transaction.id}")
+        val cycle = cycleDao.getCycleById(transaction.cycleId)
+            ?: error("Cycle local introuvable pour la transaction ${transaction.id}")
 
-
-    // Extension pour convertir UserEntity en DTO
-    private fun UserEntity.toUserDto(): UserDto {
-        return UserDto(
-            nom = this.nom,
-            phone = this.phone,
-            pin = this.pin ?: ""
+        remoteApi.createTransaction(
+            TransactionApiDto(
+                id = transactionRemoteId(transaction.id),
+                caisseId = remoteCaisseId,
+                memberId = remoteMemberId,
+                cycleId = cycle.id.toString(),
+                montant = transaction.montant,
+                type = transaction.type.name,
+                motif = transaction.motif,
+                dateTransaction = transaction.dateTransaction,
+                validatedById = transaction.validatedById
+            ),
+            cycle.numeroCycle
         )
     }
+
+    private suspend fun syncMember(action: SyncQueueEntity) {
+        val member = tontineMemberDao.getMemberById(action.entityLocalId) ?: return
+        if (member.remoteId != null) return
+        val remoteTontineId = tontineDao.getById(member.tontineId)?.remoteId
+            ?: error("Tontine non synchronisée pour le membre ${member.id}")
+        val remoteMember = remoteApi.addMember(
+            tontineId = remoteTontineId,
+            nom = member.nomSaisi,
+            phone = member.phone,
+            role = member.role.name
+        )
+        tontineMemberDao.updateMemberRemoteId(member.id, remoteMember.id)
+    }
 }
-
-

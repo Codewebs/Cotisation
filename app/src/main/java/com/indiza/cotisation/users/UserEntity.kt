@@ -21,16 +21,3 @@ data class UserEntity(
     override val syncStatus: SyncStatus = SyncStatus.PENDING_CREATE,
     override val updatedAt: Long = System.currentTimeMillis()
 ) : Syncable<String> // ← Spécifiez String comme type
-
-data class UserResponse(
-    val id: String?,
-    val nom: String,
-    val matricule: String,
-    val phone: String,
-    val email: String?,
-    val pinHash: String?,
-    val pinSalt: String?,
-    val isActive: Boolean,
-    val isVerified: Boolean
-)
-

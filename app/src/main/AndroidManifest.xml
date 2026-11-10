@@ -4,6 +4,7 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".Cotisard"
@@ -15,7 +16,6 @@
         android:roundIcon="@mipmap/logocaisses"
         android:supportsRtl="true"
         android:theme="@style/Theme.Cotisation"
-        android:usesCleartextTraffic="true"
         android:enableOnBackInvokedCallback="true"
         tools:targetApi="31">
         <activity
@@ -34,12 +34,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
-                <!-- Support cotisation://join?code=... -->
                 <data android:scheme="cotisation" android:host="join" />
-
-                <!-- Support http://localhost:3000/join?code=... (local dev) -->
-                <data android:scheme="http" android:host="10.0.2.2" android:port="3000" android:path="/join" />
-                <data android:scheme="http" android:host="192.168.1.50" android:port="3000" android:path="/join" />
             </intent-filter>
         </activity>
 
@@ -52,6 +47,21 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <service
+            android:name=".users.CotisationMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="cotisation_push_v2" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@mipmap/logocaisses" />
 
         <provider
             android:name="androidx.startup.InitializationProvider"

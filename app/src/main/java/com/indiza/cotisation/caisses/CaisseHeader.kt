@@ -335,7 +335,7 @@ fun CaisseHeader(
 }
 
 @Composable
-private fun DetailMetricCard(
+internal fun DetailMetricCard(
     modifier: Modifier = Modifier,
     label: String,
     value: String,

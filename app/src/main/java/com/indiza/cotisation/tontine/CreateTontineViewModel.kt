@@ -47,6 +47,9 @@ class CreateTontineViewModel @Inject constructor(
     fun onOnlineChange(enabled: Boolean) {
         _state.update { it.copy(isOnline = enabled) }
     }
+    fun onHideInfoForSimpleMembersChange(enabled: Boolean) {
+        _state.update { it.copy(hideInfoForSimpleMembers = enabled) }
+    }
     fun onDateFinChange(date: LocalDate) {
         _state.update { it.copy(dateFin = date) }
     }
@@ -96,6 +99,12 @@ class CreateTontineViewModel @Inject constructor(
             _state.update { it.copy(error = "Le libellé de l'exercice (ex: 2024) est requis") }
             return@launch
         }
+        if (currentState.libelle.trim().equals("Les amis du dimanche", ignoreCase = true)) {
+            _state.update {
+                it.copy(error = "Cette réunion par défaut existe déjà. Rejoignez-la depuis l'écran de recherche.")
+            }
+            return@launch
+        }
 
         _state.update { it.copy(isSaving = true) }
 
@@ -113,7 +122,8 @@ class CreateTontineViewModel @Inject constructor(
                 dateDebut = currentState.dateDebut,
                 dateFin = currentState.dateFin,
                 isOnline = currentState.isOnline,
-                isAnonymous = currentState.isAnonymous
+                isAnonymous = currentState.isAnonymous,
+                hideInfoForSimpleMembers = currentState.hideInfoForSimpleMembers
             )
 
             // 2. On insère toutes les caisses que l'utilisateur a ajoutées (y compris la cotisation si elle y est)

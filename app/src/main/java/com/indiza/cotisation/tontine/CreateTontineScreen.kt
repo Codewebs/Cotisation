@@ -294,6 +294,44 @@ fun CreateTontineScreen(
                     }
                 }
 
+                Spacer(Modifier.height(16.dp))
+
+                Surface(
+                    color = Color.White.copy(alpha = 0.05f),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .padding(16.dp)
+                            .fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Masquer les infos globales aux membres",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Color.White
+                            )
+                            Text(
+                                "Finance, évolution, soldes et paramètres seront masqués pour les simples membres.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.Gray
+                            )
+                        }
+                        Switch(
+                            checked = state.hideInfoForSimpleMembers,
+                            onCheckedChange = { viewModel.onHideInfoForSimpleMembersChange(it) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = NeonCyan,
+                                checkedTrackColor = NeonCyan.copy(alpha = 0.5f)
+                            )
+                        )
+                    }
+                }
+
                 Spacer(Modifier.height(24.dp))
                 Text("Caisses", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(8.dp))

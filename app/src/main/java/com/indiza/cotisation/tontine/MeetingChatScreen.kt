@@ -3,6 +3,7 @@ package com.indiza.cotisation.tontine
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -56,6 +57,7 @@ fun MeetingChatScreen(
 
     LaunchedEffect(tontineId) {
         viewModel.loadComments(tontineId)
+        viewModel.observeComments(tontineId)
     }
 
     // Scroll to bottom when new messages arrive
@@ -94,9 +96,45 @@ fun MeetingChatScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     contentPadding = PaddingValues(vertical = 16.dp)
                 ) {
-                    items(state.comments) { comment ->
-                        ChatBubble(comment)
+                    if (state.isLoading && state.comments.isEmpty()) {
+                        item {
+                            Box(Modifier.fillParentMaxSize(), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(color = NeonCyan)
+                            }
+                        }
+                    } else if (state.comments.isEmpty()) {
+                        item {
+                            Column(
+                                modifier = Modifier.fillParentMaxSize(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Text(
+                                    state.errorMessage ?: "Aucun message pour le moment.",
+                                    color = if (state.errorMessage == null) Color.Gray else Color(0xFFFF8A80),
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                                if (state.errorMessage != null) {
+                                    TextButton(onClick = { viewModel.loadComments(tontineId) }) {
+                                        Text("Réessayer", color = NeonCyan)
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        items(state.comments, key = { it.id }) { comment ->
+                            ChatBubble(comment)
+                        }
                     }
+                }
+                state.errorMessage?.takeIf { state.comments.isNotEmpty() }?.let { errorMessage ->
+                    Text(
+                        errorMessage,
+                        color = Color(0xFFFF8A80),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        fontSize = 12.sp
+                    )
                 }
 
                 // Input Area
@@ -108,10 +146,10 @@ fun MeetingChatScreen(
                     Column(Modifier.padding(16.dp)) {
                         
                         // Image Preview
-                        if (state.selectedImageBase64 != null) {
+                        if (state.selectedImageUri != null) {
                             Box(Modifier.padding(bottom = 12.dp)) {
                                 AsyncImage(
-                                    model = state.selectedImageBase64,
+                                    model = state.selectedImageUri,
                                     contentDescription = null,
                                     modifier = Modifier.size(100.dp).clip(RoundedCornerShape(12.dp)).border(2.dp, NeonCyan, RoundedCornerShape(12.dp)),
                                     contentScale = ContentScale.Crop
@@ -151,8 +189,8 @@ fun MeetingChatScreen(
 
                             FloatingActionButton(
                                 onClick = {
-                                    if (textContent.isNotBlank() || state.selectedImageBase64 != null) {
-                                        viewModel.sendComment(tontineId, textContent)
+                                    if (textContent.isNotBlank() || state.selectedImageUri != null) {
+                                        viewModel.sendComment(context, tontineId, textContent)
                                         textContent = ""
                                     }
                                 },
@@ -177,32 +215,88 @@ fun MeetingChatScreen(
 
 @Composable
 fun ChatBubble(comment: CommentResponse) {
-    // Note: Pour simplifier on ne check pas si c'est "Me" car l'ID local n'est pas passé ici
-    // Mais on peut utiliser le style standard
-    Column(horizontalAlignment = Alignment.Start) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(comment.author.nom.uppercase(), fontSize = 9.sp, fontWeight = FontWeight.Black, color = Color.Gray)
-            val time = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(comment.createdAt))
-            Text(time, fontSize = 8.sp, color = Color.DarkGray)
-        }
-        Spacer(Modifier.height(4.dp))
-        Surface(
-            color = Color(0xFF374151),
-            shape = RoundedCornerShape(topEnd = 20.dp, bottomEnd = 20.dp, bottomStart = 20.dp)
-        ) {
-            Column(Modifier.padding(12.dp)) {
-                if (comment.imageUrl != null) {
-                    AsyncImage(
-                        model = comment.imageUrl,
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp).clip(RoundedCornerShape(12.dp)),
-                        contentScale = ContentScale.Fit
-                    )
-                    if (comment.content.isNotBlank()) Spacer(Modifier.height(8.dp))
-                }
-                if (comment.content.isNotBlank()) {
-                    Text(comment.content, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                }
+    val authorColors = listOf(
+        Color(0xFF1E293B), // Dark Slate
+        Color(0xFF1E3A8A), // Dark Blue
+        Color(0xFF065F46), // Dark Emerald
+        Color(0xFF581C87), // Dark Violet
+        Color(0xFF831843), // Dark Rose
+        Color(0xFF7C2D12)  // Dark Amber
+    )
+    val authorAccentColors = listOf(
+        NeonCyan,
+        Color(0xFF60A5FA),
+        Color(0xFF34D399),
+        Color(0xFFC084FC),
+        Color(0xFFF472B6),
+        Color(0xFFFBBF24)
+    )
+    val authorKey = comment.author.nom.ifBlank { "Membre" }.lowercase()
+    val colorIndex = Math.abs(authorKey.hashCode()) % authorColors.size
+    val bubbleBg = authorColors[colorIndex]
+    val accentColor = authorAccentColors[colorIndex]
+    val time = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(comment.createdAt))
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth(0.85f)
+            .padding(vertical = 4.dp),
+        color = bubbleBg,
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.35f))
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            // 1. Image (if present)
+            if (comment.imageUrl != null) {
+                AsyncImage(
+                    model = comment.imageUrl,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 200.dp)
+                        .clip(RoundedCornerShape(10.dp)),
+                    contentScale = ContentScale.Fit
+                )
+                if (comment.content.isNotBlank()) Spacer(Modifier.height(8.dp))
+            }
+
+            // 2. Message content
+            if (comment.content.isNotBlank()) {
+                Text(
+                    text = comment.content,
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            // 3. Fine divider line
+            HorizontalDivider(
+                color = Color.White.copy(alpha = 0.15f),
+                thickness = 0.5.dp
+            )
+
+            Spacer(Modifier.height(6.dp))
+
+            // 4. Author name & date below the divider inside the single block
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = comment.author.nom.ifBlank { "MEMBRE" }.uppercase(),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = accentColor
+                )
+                Text(
+                    text = time,
+                    fontSize = 9.sp,
+                    color = Color.White.copy(alpha = 0.6f)
+                )
             }
         }
     }

@@ -30,6 +30,7 @@ data class JoinRequestResponse(
 data class UserProfileInfo(
     val id: String,
     val nom: String,
+    val email: String,
     val phone: String,
     val matricule: String
 )

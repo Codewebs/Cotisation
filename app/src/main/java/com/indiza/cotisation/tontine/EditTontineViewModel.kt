@@ -41,6 +41,9 @@ class EditTontineViewModel @Inject constructor(
     fun onAnonymousChange(enabled: Boolean) {
         _state.update { it.copy(isAnonymous = enabled) }
     }
+    fun onHideInfoForSimpleMembersChange(enabled: Boolean) {
+        _state.update { it.copy(hideInfoForSimpleMembers = enabled) }
+    }
     private fun loadTontineData() = viewModelScope.launch {
         repository.getTontineWithCaisses(tontineId)
             .filterNotNull() // <--- Crucial : Ignore si l'ID n'existe pas encore ou est invalide
@@ -50,7 +53,9 @@ class EditTontineViewModel @Inject constructor(
                     libelle = data.tontine.libelle,
                     exercice = data.tontine.exercice ?: "",
                     dateDebut = data.tontine.dateDebut,
-                    dateFin = data.tontine.dateFin
+                    dateFin = data.tontine.dateFin,
+                    isAnonymous = data.tontine.isAnonymous,
+                    hideInfoForSimpleMembers = data.tontine.hideInfoForSimpleMembers
                 ) }
             }
     }
@@ -73,7 +78,9 @@ class EditTontineViewModel @Inject constructor(
                 libelle = s.libelle,
                 exercice = s.exercice,
                 dateDebut = s.dateDebut,
-                dateFin = s.dateFin
+                dateFin = s.dateFin,
+                isAnonymous = s.isAnonymous,
+                hideInfoForSimpleMembers = s.hideInfoForSimpleMembers
             )
             _updateSuccess.emit(true)
         } catch (e: Exception) {

@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cotisation - Détails de la Tontine</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+    <script src="/js/supabase-config.js"></script>
+    <script src="/js/supabase-client.js"></script>
+    <script src="/js/realtime.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
@@ -241,28 +245,61 @@
         const urlParams = new URLSearchParams(window.location.search);
         const tontineId = urlParams.get('id');
         let tontineData = null;
+        let currentUser = null;
+        let commentsChannel = null;
 
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
             if (!tontineId) {
                 window.location.href = '/profile';
                 return;
             }
+            try {
+                currentUser = await getCurrentUser();
+            } catch (error) {
+                console.error('Unable to verify the current Supabase session:', error);
+                alert(error.message || "Erreur lors de la vérification de la session.");
+                return;
+            }
+            if (!currentUser) { window.location.href = '/login'; return; }
             fetchTontineDetails();
             fetchJoinRequests();
+            commentsChannel = db.channel(`tontine-comments-${tontineId}`)
+                .on('postgres_changes', {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'comments',
+                    filter: `tontine_id=eq.${tontineId}`
+                }, () => fetchComments())
+                .subscribe((status, error) => {
+                    if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                        console.error('Unable to subscribe to tontine comments:', error || status);
+                    }
+                });
             fetchComments();
             renderCharts();
-
-            // Rafraîchir les commentaires toutes les 5 secondes
-            setInterval(fetchComments, 5000);
+            window.addEventListener('join_request_change', event => {
+                if (event.detail.tontineId === tontineId) fetchJoinRequests();
+            });
+            window.addEventListener('beforeunload', () => {
+                if (commentsChannel) db.removeChannel(commentsChannel);
+            }, { once: true });
         });
 
         async function fetchComments() {
             try {
-                const user = JSON.parse(localStorage.getItem('currentUser'));
-                if (!user) return;
-
-                const res = await fetch(`/tontines/${tontineId}/comments?userId=${user.id}`);
-                const comments = await res.json();
+                if (!currentUser) return;
+                const { data: comments, error } = await db.from('comments')
+                    .select('*').eq('tontine_id', tontineId).order('created_at');
+                if (error) throw error;
+                const authorIds = [...new Set(comments.map(comment => comment.user_id))];
+                let members = [];
+                if (authorIds.length) {
+                    const { data, error: membersError } = await db.from('members')
+                        .select('user_id,nom_saisi').eq('tontine_id', tontineId).in('user_id', authorIds);
+                    if (membersError) throw membersError;
+                    members = data;
+                }
+                const authors = new Map((members || []).map(member => [member.user_id, member.nom_saisi]));
                 const list = document.getElementById('comment-list');
 
                 if (comments.length === 0) {
@@ -274,22 +311,30 @@
                 const isAtBottom = list.scrollHeight - list.scrollTop <= list.clientHeight + 100;
 
                 list.innerHTML = '';
-                comments.forEach(c => {
-                    const isMe = currentUser && c.userId === currentUser.id;
+                for (const c of comments) {
+                    const isMe = c.user_id === currentUser.id;
+                    let imageUrl = null;
+                    if (c.image_url) {
+                        const { data: signed, error: signError } = await db.storage.from('comment-images')
+                            .createSignedUrl(c.image_url, 3600);
+                        if (signError) throw signError;
+                        if (!signed?.signedUrl) throw new Error('Impossible de générer le lien sécurisé de cette image.');
+                        imageUrl = signed.signedUrl;
+                    }
                     const div = document.createElement('div');
                     div.className = `flex flex-col ${isMe ? 'items-end' : 'items-start'}`;
                     div.innerHTML = `
                         <div class="flex items-center gap-2 mb-1 px-2">
-                            <span class="text-[9px] font-black text-gray-500 uppercase">${isMe ? 'MOI' : c.author.nom}</span>
-                            <span class="text-[8px] text-gray-700">${new Date(parseInt(c.createdAt)).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                            <span class="text-[9px] font-black text-gray-500 uppercase">${isMe ? 'MOI' : escapeHtml(authors.get(c.user_id) || 'Membre')}</span>
+                            <span class="text-[8px] text-gray-700">${new Date(parseInt(c.created_at, 10)).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                         </div>
                         <div class="${isMe ? 'bg-cyan-500 text-gray-900 rounded-l-3xl rounded-tr-3xl' : 'bg-gray-800 text-gray-300 rounded-r-3xl rounded-tl-3xl'} px-5 py-3 text-sm font-bold shadow-xl max-w-[85%] border ${isMe ? 'border-cyan-400' : 'border-gray-700'} overflow-hidden">
-                            ${c.imageUrl ? `<img src="${c.imageUrl}" class="rounded-xl mb-2 w-full max-h-60 object-cover cursor-pointer hover:opacity-90 transition" onclick="window.open('${c.imageUrl}')">` : ''}
-                            ${c.content ? `<p class="whitespace-pre-wrap">${c.content}</p>` : ''}
+                            ${imageUrl ? `<img src="${escapeHtml(imageUrl)}" class="rounded-xl mb-2 w-full max-h-60 object-cover cursor-pointer hover:opacity-90 transition" alt="Image jointe">` : ''}
+                            ${c.content ? `<p class="whitespace-pre-wrap">${escapeHtml(c.content)}</p>` : ''}
                         </div>
                     `;
                     list.appendChild(div);
-                });
+                }
 
                 if (isAtBottom) list.scrollTop = list.scrollHeight;
 
@@ -299,26 +344,36 @@
         async function sendComment() {
             const input = document.getElementById('comment-input');
             const content = input.value.trim();
-            const user = JSON.parse(localStorage.getItem('currentUser'));
-            const imagePreview = document.getElementById('image-preview');
-            const imageUrl = imagePreview.src.startsWith('data:') ? imagePreview.src : null;
-
-            if (!content && !imageUrl) return;
+            const user = currentUser || await getCurrentUser();
+            const file = document.getElementById('image-input').files[0];
+            if (!content && !file) return;
             if (!user) return alert("Session expirée");
 
-            input.value = ''; // Clear immédiat
-            clearImagePreview();
-
             try {
-                const res = await fetch(`/tontines/${tontineId}/comments`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ userId: user.id, content, imageUrl })
-                });
-                if (res.ok) {
-                    fetchComments();
+                let imagePath = null;
+                if (file) {
+                    if (!file.type.startsWith('image/')) throw new Error('Choisissez un fichier image.');
+                    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+                    imagePath = `tontines/${tontineId}/${user.id}/${crypto.randomUUID()}-${safeName}`;
+                    const { error: uploadError } = await db.storage.from('comment-images').upload(imagePath, file, {
+                        contentType: file.type, upsert: false
+                    });
+                    if (uploadError) throw uploadError;
                 }
-            } catch (e) { alert("Erreur réseau"); }
+                const { error } = await db.from('comments').insert({
+                    tontine_id: tontineId, user_id: user.id, content, image_url: imagePath
+                });
+                if (error) {
+                    if (imagePath) {
+                        const { error: cleanupError } = await db.storage.from('comment-images').remove([imagePath]);
+                        if (cleanupError) console.error('Unable to remove the unreferenced comment image:', cleanupError);
+                    }
+                    throw error;
+                }
+                input.value = '';
+                clearImagePreview();
+                fetchComments();
+            } catch (e) { alert(e.message || "Erreur lors de l'envoi"); }
         }
 
         function handleImageSelect(event) {
@@ -346,8 +401,35 @@
 
         async function renderCharts() {
             try {
-                const res = await fetch(`/tontines/${tontineId}/stats`);
-                const stats = await res.json();
+                const { data: caisseRows, error: caisseError } = await db.from('caisses')
+                    .select('id').eq('tontine_id', tontineId);
+                if (caisseError) throw caisseError;
+                const caisseIds = caisseRows.map(caisse => caisse.id);
+                let transactions = [];
+                if (caisseIds.length) {
+                    const { data, error } = await db.from('transactions')
+                        .select('type,montant,date_transaction').in('caisse_id', caisseIds);
+                    if (error) throw error;
+                    transactions = data;
+                }
+                const monthly = new Map();
+                const byType = new Map();
+                transactions.forEach(tx => {
+                    const date = new Date(Number(tx.date_transaction));
+                    const month = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                    monthly.set(month, (monthly.get(month) || 0) + Number(tx.montant));
+                    byType.set(tx.type, (byType.get(tx.type) || 0) + Number(tx.montant));
+                });
+                let balance = 0;
+                const growth = {};
+                Array.from(monthly.keys()).sort().forEach(month => {
+                    balance += monthly.get(month);
+                    growth[month] = balance;
+                });
+                const stats = {
+                    growth,
+                    distribution: Array.from(byType, ([type, total]) => ({ type, total }))
+                };
 
                 // 1. Line Chart (Growth)
                 const ctxLine = document.getElementById('growthChart').getContext('2d');
@@ -419,57 +501,72 @@
 
         async function fetchTontineDetails() {
             try {
-                const user = JSON.parse(localStorage.getItem('currentUser'));
-                if (!user) { window.location.href = '/login'; return; }
-
-                const res = await fetch(`/tontines/${tontineId}`);
-                tontineData = await res.json();
-
-                if (tontineData.error) {
-                    alert(tontineData.error);
-                    window.location.href = '/search';
-                    return;
+                const { data: tontine, error } = await db.from('tontines').select('*').eq('id', tontineId).single();
+                if (error) throw error;
+                const { data: members, error: membersError } = await db.from('members')
+                    .select('*').eq('tontine_id', tontineId).order('joined_at');
+                if (membersError) throw membersError;
+                const { data: caisses, error: caissesError } = await db.from('caisses')
+                    .select('*').eq('tontine_id', tontineId);
+                if (caissesError) throw caissesError;
+                const caisseIds = caisses.map(caisse => caisse.id);
+                let transactions = [];
+                let loans = [];
+                let expenses = [];
+                if (caisseIds.length) {
+                    const results = await Promise.all([
+                        db.from('transactions').select('caisse_id,montant').in('caisse_id', caisseIds),
+                        db.from('prets').select('montant_restant,montant_principal,montant_interets,statut').in('caisse_id', caisseIds),
+                        db.from('sorties_caisse').select('montant').in('caisse_id', caisseIds)
+                    ]);
+                    for (const result of results) if (result.error) throw result.error;
+                    transactions = results[0].data;
+                    loans = results[1].data;
+                    expenses = results[2].data;
                 }
-
-                // Vérifier si membre
-                const isMember = tontineData.members.some(m => m.userId === user.id);
-                if (!isMember) {
-                    alert("Accès refusé. Vous n'êtes pas membre de cette tontine.");
-                    window.location.href = '/search';
-                    return;
-                }
+                const balance = transactions.reduce((sum, tx) => sum + Number(tx.montant), 0)
+                    - expenses.reduce((sum, expense) => sum + Number(expense.montant), 0);
+                const activeLoans = loans.filter(loan => loan.statut === 'ACTIF');
+                const outstanding = activeLoans.reduce((sum, loan) => sum + Number(loan.montant_restant || loan.montant_principal), 0);
+                const summary = {
+                    globalBalance: balance,
+                    totalActiveLoans: outstanding,
+                    forecastGains: activeLoans.reduce((sum, loan) => sum + Number(loan.montant_interets || 0), 0),
+                    lendableAmount: Math.max(0, balance - outstanding)
+                };
+                tontineData = { ...tontine, members, caisses, summary };
 
                 // Basic Info
                 document.getElementById('tontine-name').innerText = tontine.libelle;
                 document.getElementById('tontine-exercice').innerText = `EXERCICE ${tontine.exercice || '----'}`;
 
                 // Summary Stats
-                document.getElementById('stat-balance').innerText = `${tontine.summary.globalBalance.toLocaleString()} F`;
-                document.getElementById('stat-loans').innerText = `${tontine.summary.totalActiveLoans.toLocaleString()} F`;
-                document.getElementById('stat-gains').innerText = `${tontine.summary.forecastGains.toLocaleString()} F`;
-                document.getElementById('stat-lendable').innerText = `${tontine.summary.lendableAmount.toLocaleString()} F`;
+                document.getElementById('stat-balance').innerText = `${summary.globalBalance.toLocaleString()} F`;
+                document.getElementById('stat-loans').innerText = `${summary.totalActiveLoans.toLocaleString()} F`;
+                document.getElementById('stat-gains').innerText = `${summary.forecastGains.toLocaleString()} F`;
+                document.getElementById('stat-lendable').innerText = `${summary.lendableAmount.toLocaleString()} F`;
 
-                const totalCap = tontine.summary.lendableAmount + tontine.summary.totalActiveLoans;
-                const usagePercent = totalCap > 0 ? Math.round((tontine.summary.totalActiveLoans / totalCap) * 100) : 0;
+                const totalCap = summary.lendableAmount + summary.totalActiveLoans;
+                const usagePercent = totalCap > 0 ? Math.round((summary.totalActiveLoans / totalCap) * 100) : 0;
                 document.getElementById('loan-usage-percent').innerText = `${usagePercent}%`;
                 document.getElementById('loan-usage-bar').style.width = `${usagePercent}%`;
 
                 // Members
                 const memberList = document.getElementById('member-list');
                 memberList.innerHTML = '';
-                document.getElementById('member-count').innerText = tontine.members.length;
-                tontine.members.forEach(m => {
+                document.getElementById('member-count').innerText = members.length;
+                members.forEach(m => {
                     const item = document.createElement('div');
-                    item.className = `flex items-center gap-4 p-4 rounded-3xl border border-gray-800 transition hover:border-cyan-500/30 ${m.userId ? 'bg-cyan-500/5' : 'bg-gray-800/30'}`;
+                    item.className = `flex items-center gap-4 p-4 rounded-3xl border border-gray-800 transition hover:border-cyan-500/30 ${m.user_id ? 'bg-cyan-500/5' : 'bg-gray-800/30'}`;
                     item.innerHTML = `
-                        <div class="w-12 h-12 rounded-2xl flex items-center justify-center text-lg font-black ${m.userId ? 'bg-cyan-500 text-gray-900 shadow-lg shadow-cyan-500/20' : 'bg-gray-700 text-gray-400'}">
-                            ${m.nomSaisi.charAt(0).toUpperCase()}
+                        <div class="w-12 h-12 rounded-2xl flex items-center justify-center text-lg font-black ${m.user_id ? 'bg-cyan-500 text-gray-900 shadow-lg shadow-cyan-500/20' : 'bg-gray-700 text-gray-400'}">
+                            ${escapeHtml((m.nom_saisi || '?').charAt(0).toUpperCase())}
                         </div>
                         <div class="flex-1">
-                            <p class="text-sm font-black text-white">${m.nomSaisi.toUpperCase()}</p>
-                            <p class="text-[10px] font-bold text-gray-500 tracking-wider">${m.role.replace('_', ' ')} ${m.userId ? '• COMPTE LIÉ' : ''}</p>
+                            <p class="text-sm font-black text-white">${escapeHtml(m.nom_saisi.toUpperCase())}</p>
+                            <p class="text-[10px] font-bold text-gray-500 tracking-wider">${escapeHtml((m.role || '').replace('_', ' '))} ${m.user_id ? '• COMPTE LIÉ' : ''}</p>
                         </div>
-                        ${m.isInitiator ? '<span class="bg-cyan-500/10 text-cyan-400 text-[8px] font-black px-2 py-1 rounded border border-cyan-500/20">INIT</span>' : ''}
+                        ${m.is_initiator ? '<span class="bg-cyan-500/10 text-cyan-400 text-[8px] font-black px-2 py-1 rounded border border-cyan-500/20">INIT</span>' : ''}
                     `;
                     memberList.appendChild(item);
                 });
@@ -477,21 +574,19 @@
                 // Caisses
                 const caisseList = document.getElementById('caisse-list');
                 caisseList.innerHTML = '';
-                tontine.caisses.forEach(c => {
-                    let soldeCaisse = 0;
-                    if (c.transactions) {
-                        c.transactions.forEach(tx => soldeCaisse += parseInt(tx.montant));
-                    }
+                caisses.forEach(c => {
+                    const soldeCaisse = transactions.filter(tx => tx.caisse_id === c.id)
+                        .reduce((sum, tx) => sum + Number(tx.montant), 0);
 
                     const card = document.createElement('div');
                     card.className = "bg-gray-800 border border-gray-700 p-8 rounded-[2.5rem] hover:border-cyan-500/50 transition duration-500 shadow-2xl group cursor-pointer";
                     card.onclick = () => window.location.href = `/caisse-details?id=${c.id}`;
                     card.innerHTML = `
                         <div class="flex justify-between items-start mb-6">
-                            <span class="bg-gray-700/50 text-gray-300 text-[9px] font-black px-3 py-1.5 rounded-full uppercase tracking-widest border border-gray-600">${c.type.replace('_', ' ')}</span>
+                            <span class="bg-gray-700/50 text-gray-300 text-[9px] font-black px-3 py-1.5 rounded-full uppercase tracking-widest border border-gray-600">${escapeHtml((c.type || '').replace('_', ' '))}</span>
                             <div class="flex items-center gap-2">
                                 <div class="text-right">
-                                    <p class="text-cyan-400 font-black text-xl leading-none">${c.montantFixe ? c.montantFixe.toLocaleString() : 'LIBRE'}</p>
+                                    <p class="text-cyan-400 font-black text-xl leading-none">${c.montant_fixe ? Number(c.montant_fixe).toLocaleString() : 'LIBRE'}</p>
                                     <p class="text-[8px] font-black text-gray-600 uppercase tracking-tighter mt-1">Cotisation Fixe</p>
                                 </div>
                                 <button onclick="event.stopPropagation(); deleteCaisse('${c.id}')" class="p-2 hover:bg-red-500/10 text-gray-600 hover:text-red-500 rounded-lg transition">
@@ -499,7 +594,7 @@
                                 </button>
                             </div>
                         </div>
-                        <h3 class="text-2xl font-black text-white mb-4 group-hover:text-cyan-400 transition tracking-tighter">${c.libelle.toUpperCase()}</h3>
+                        <h3 class="text-2xl font-black text-white mb-4 group-hover:text-cyan-400 transition tracking-tighter">${escapeHtml(c.libelle.toUpperCase())}</h3>
                         <div class="mt-8 pt-6 border-t border-gray-700/50 flex justify-between items-end">
                             <div>
                                 <p class="text-[8px] font-black text-gray-600 uppercase mb-1">Fréquence</p>
@@ -519,8 +614,10 @@
 
         async function fetchJoinRequests() {
             try {
-                const res = await fetch(`/tontines/${tontineId}/requests`);
-                const requests = await res.json();
+                const { data: requests, error } = await db.from('join_requests')
+                    .select('id,user_id,created_at').eq('tontine_id', tontineId)
+                    .eq('status', 'PENDING').order('created_at');
+                if (error) throw error;
                 const list = document.getElementById('request-list');
                 const badge = document.getElementById('request-badge');
 
@@ -533,18 +630,22 @@
                     list.innerHTML = '<div class="py-20 text-center text-gray-600 bg-gray-800/20 rounded-3xl border border-dashed border-gray-800 uppercase text-xs font-black">Aucune demande en attente</div>';
                 }
 
-                requests.forEach(r => {
+                for (const r of requests) {
+                    const { data: prof } = await db.from('profiles').select('nom,email,phone,matricule').eq('id', r.user_id).maybeSingle();
+                    const reqName = (prof && prof.nom) ? prof.nom : ((prof && prof.email) ? prof.email : 'Demandeur');
+                    const reqPhone = (prof && prof.phone) ? prof.phone : 'Non renseigné';
+
                     const card = document.createElement('div');
                     card.className = "bg-gray-800 border border-gray-700 p-8 rounded-[2.5rem] shadow-xl";
                     card.innerHTML = `
                         <div class="flex items-center gap-6 mb-8">
-                            <div class="w-16 h-16 bg-cyan-500 rounded-3xl flex items-center justify-center font-black text-gray-900 text-2xl shadow-lg shadow-cyan-500/20 transform -rotate-3">${r.requester.nom.charAt(0)}</div>
+                            <div class="w-16 h-16 bg-cyan-500 rounded-3xl flex items-center justify-center font-black text-gray-900 text-2xl shadow-lg shadow-cyan-500/20 transform -rotate-3">${escapeHtml(reqName.charAt(0).toUpperCase())}</div>
                             <div class="flex-1">
-                                <h4 class="text-xl font-black text-white uppercase">${r.requester.nom}</h4>
-                                <p class="text-xs font-bold text-gray-500">Tél: ${r.requester.phone}</p>
+                                <h4 class="text-xl font-black text-white uppercase">${escapeHtml(reqName)}</h4>
+                                <p class="text-xs font-bold text-gray-400">Tél : ${escapeHtml(reqPhone)}</p>
                             </div>
                             <div class="text-right text-[10px] font-black text-gray-700 uppercase">
-                                ${new Date(r.createdAt).toLocaleDateString()}
+                                ${new Date(Number(r.created_at)).toLocaleDateString()}
                             </div>
                         </div>
                         <div class="space-y-6">
@@ -552,13 +653,10 @@
                                 <label class="text-[10px] font-black text-cyan-400 uppercase tracking-widest mb-3 block">Sélectionner le membre à mapper</label>
                                 <select id="member-select-${r.id}" class="w-full bg-gray-700 border border-gray-600 rounded-2xl px-5 py-4 text-sm font-bold text-white focus:ring-2 focus:ring-cyan-500 outline-none appearance-none">
                                     <option value="">-- CHOISIR UN MEMBRE --</option>
-                                    ${tontineData.members.filter(m => !m.userId).map(m => `<option value="${m.id}">${m.nomSaisi.toUpperCase()}</option>`).join('')}
+                                    ${tontineData.members.filter(m => !m.user_id).map(m => `<option value="${m.id}">${escapeHtml(m.nom_saisi.toUpperCase())}</option>`).join('')}
                                 </select>
                             </div>
-                            <div class="flex items-center gap-3 p-4 bg-gray-900/50 rounded-2xl border border-gray-700">
-                                <input type="checkbox" id="update-info-${r.id}" checked class="w-5 h-5 rounded border-gray-600 text-cyan-500 focus:ring-cyan-500 bg-gray-700">
-                                <label for="update-info-${r.id}" class="text-xs font-bold text-gray-400">Mettre à jour les informations (Nom/Téléphone) avec le profil réel</label>
-                            </div>
+                            <p class="text-xs text-gray-500">Les informations privées du profil ne sont pas exposées aux autres membres.</p>
                             <button onclick="approveRequest('${r.id}')" class="w-full bg-emerald-500 hover:bg-emerald-600 text-gray-900 font-black py-4 rounded-2xl shadow-lg shadow-emerald-500/20 transition transform active:scale-95 uppercase tracking-tighter">
                                 Confirmer le mappage
                             </button>
@@ -570,66 +668,47 @@
         }
 
         async function approveRequest(requestId) {
-            const user = JSON.parse(localStorage.getItem('currentUser'));
             const targetMemberId = document.getElementById(`member-select-${requestId}`).value;
-            const updateInfo = document.getElementById(`update-info-${requestId}`).checked;
-
-            if (!targetMemberId) {
-                alert("Veuillez sélectionner un membre à mapper.");
-                return;
-            }
 
             try {
-                const res = await fetch(`/requests/${requestId}/approve`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        adminUserId: user.id,
-                        targetMemberId,
-                        updateInfo
-                    })
+                const { error } = await db.rpc('approve_tontine_join_request', {
+                    p_request_id: requestId,
+                    p_target_member_id: targetMemberId || null
                 });
-                if (res.ok) {
-                    fetchTontineDetails();
-                    fetchJoinRequests();
-                } else {
-                    const err = await res.json();
-                    alert(err.error);
-                }
-            } catch (e) { alert("Erreur réseau"); }
+                if (error) throw error;
+                await fetchTontineDetails();
+                await fetchJoinRequests();
+            } catch (e) { alert(e.message || "Erreur lors de l'approbation"); }
         }
 
         async function deleteCaisse(id) {
             if (!confirm("Voulez-vous vraiment supprimer cette caisse ? Cette action est irréversible et ne peut être effectuée que si la caisse est vide.")) return;
 
             try {
-                const res = await fetch(`/caisses/${id}`, { method: 'DELETE' });
-                const result = await res.json();
-                if (res.ok) {
-                    alert(result.message);
-                    fetchTontineDetails();
-                } else {
-                    alert(result.error);
+                const linkedTables = ['transactions', 'prets', 'amendes', 'sorties_caisse'];
+                for (const table of linkedTables) {
+                    const { data, error } = await db.from(table).select('id').eq('caisse_id', id).limit(1);
+                    if (error) throw error;
+                    if (data.length) throw new Error("Cette caisse contient des opérations et ne peut pas être supprimée.");
                 }
-            } catch (e) { alert("Erreur de connexion"); }
+                const { error } = await db.from('caisses').delete().eq('id', id);
+                if (error) throw error;
+                await fetchTontineDetails();
+            } catch (e) { alert(e.message || "Erreur lors de la suppression"); }
         }
 
         async function generateInvite() {
-            const user = JSON.parse(localStorage.getItem('currentUser'));
             try {
-                const res = await fetch(`/tontines/${tontineId}/invites`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ senderId: user.id })
+                const user = currentUser || await getCurrentUser();
+                if (!user) throw new Error("Session expirée.");
+                const code = crypto.randomUUID();
+                const { error } = await db.from('invite_links').insert({
+                    tontine_id: tontineId, sender_id: user.id, code
                 });
-                const invite = await res.json();
-                if (res.ok) {
-                    const url = `${window.location.origin}/join?code=${invite.code}`;
-                    prompt("Lien d'invitation généré ! Copiez-le pour l'envoyer :", url);
-                } else {
-                    alert(invite.error);
-                }
-            } catch (e) { alert("Erreur"); }
+                if (error) throw error;
+                const url = `${window.location.origin}/join?code=${encodeURIComponent(code)}&tontineId=${encodeURIComponent(tontineId)}`;
+                prompt("Lien d'invitation généré ! Copiez-le pour l'envoyer :", url);
+            } catch (e) { alert(e.message || "Erreur lors de la génération du lien"); }
         }
 
         async function exportToPDF() {
@@ -670,10 +749,10 @@
             doc.text("LISTE DES ADHÉRENTS ET RÔLES", 14, doc.lastAutoTable.finalY + 15);
 
             const membersData = tontineData.members.map(m => [
-                m.nomSaisi.toUpperCase(),
-                m.role.replace('_', ' '),
-                m.userId ? "COMPTE LIÉ" : "MANUEL",
-                m.isInitiator ? "OUI" : "NON"
+                m.nom_saisi.toUpperCase(),
+                (m.role || '').replace('_', ' '),
+                m.user_id ? "COMPTE LIÉ" : "MANUEL",
+                m.is_initiator ? "OUI" : "NON"
             ]);
 
             doc.autoTable({
@@ -721,22 +800,15 @@
         }
 
         async function broadcastReport() {
-            const user = JSON.parse(localStorage.getItem('currentUser'));
-            if (!confirm("Voulez-vous notifier tous les membres de la publication de ce rapport financier ?")) return;
-
             try {
-                const res = await fetch(`/tontines/${tontineId}/broadcast-report`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ senderId: user.id })
+                const { data: count, error } = await db.rpc('broadcast_tontine_report', {
+                    p_tontine_id: tontineId
                 });
-                const result = await res.json();
-                if (res.ok) {
-                    alert(result.message);
-                } else {
-                    alert(result.error);
-                }
-            } catch (e) { alert("Erreur réseau"); }
+                if (error) throw error;
+                alert(`Rapport communiqué à ${count} membre(s).`);
+            } catch (e) {
+                alert(e.message || "Erreur lors de l'envoi du rapport");
+            }
         }
     </script>
 </body>

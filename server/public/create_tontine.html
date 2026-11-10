@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cotisation - Créer une Tontine</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+    <script src="/js/supabase-config.js"></script>
+    <script src="/js/supabase-client.js"></script>
+    <script src="/js/realtime.js"></script>
 </head>
 <body class="bg-gray-900 text-white min-h-screen p-4 md:p-8 flex items-center justify-center">
     <div class="max-w-2xl w-full bg-gray-800 rounded-3xl shadow-2xl border border-gray-700 p-8">
@@ -61,45 +65,49 @@
     </div>
 
     <script>
-        // Pré-remplir l'ID créateur si disponible en localStorage (après un login réussi)
-        window.onload = () => {
-            const savedUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
-            if (savedUser.id) {
-                document.getElementById('creatorId').value = savedUser.id;
-            }
-        };
+        window.addEventListener('load', async () => {
+            const user = await getCurrentUser().catch(() => null);
+            if (user) document.getElementById('creatorId').value = user.id;
+        });
 
         async function createTontine() {
             const msgBox = document.getElementById('msg-box');
             const data = {
                 libelle: document.getElementById('libelle').value,
                 exercice: document.getElementById('exercice').value,
-                dateDebut: document.getElementById('dateDebut').value,
-                dateFin: document.getElementById('dateFin').value,
-                creatorId: document.getElementById('creatorId').value
+                date_debut: document.getElementById('dateDebut').value,
+                date_fin: document.getElementById('dateFin').value
             };
 
-            if (!data.libelle || !data.dateDebut || !data.dateFin) {
+            if (!data.libelle || !data.date_debut || !data.date_fin) {
                 showMsg("Veuillez remplir les champs obligatoires", false);
                 return;
             }
 
             try {
-                const res = await fetch('/tontines', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(data)
+                const user = await getCurrentUser();
+                if (!user) throw new Error("Veuillez vous connecter.");
+                const { data: tontine, error } = await db.from('tontines').insert({
+                    libelle: data.libelle,
+                    exercice: data.exercice || null,
+                    date_debut: data.date_debut,
+                    date_fin: data.date_fin,
+                    creator_id: user.id
+                }).select('id').single();
+                if (error) throw error;
+                const { error: memberError } = await db.from('members').insert({
+                    tontine_id: tontine.id,
+                    user_id: user.id,
+                    nom_saisi: user.nom || user.email,
+                    phone: user.phone || null,
+                    role: 'ADMIN',
+                    is_initiator: true
                 });
-                const result = await res.json();
-
-                if (res.ok) {
-                    showMsg("Tontine créée avec succès !", true);
-                    setTimeout(() => window.location.href = '/search', 1500);
-                } else {
-                    showMsg(result.error || "Erreur lors de la création", false);
-                }
+                if (memberError) throw memberError;
+                showMsg("Tontine créée avec succès !", true);
+                setTimeout(() => window.location.href = '/profile', 1500);
             } catch (e) {
-                showMsg("Erreur de connexion au serveur", false);
+                showMsg(e.message || "Erreur lors de la création", false);
             }
         }
 

@@ -49,7 +49,9 @@ interface TontineDao {
 
     @Query("""
     UPDATE tontines 
-    SET libelle = :libelle, exercice = :exercice, dateDebut = :dateDebut, dateFin = :dateFin, updatedAt = :updatedAt
+    SET libelle = :libelle, exercice = :exercice, dateDebut = :dateDebut, dateFin = :dateFin,
+        isAnonymous = :isAnonymous, hideInfoForSimpleMembers = :hideInfoForSimpleMembers,
+        updatedAt = :updatedAt
     WHERE id = :id
 """)
     suspend fun updateTontineInfo(
@@ -58,6 +60,8 @@ interface TontineDao {
         exercice: String,
         dateDebut: LocalDate,
         dateFin: LocalDate,
+        isAnonymous: Boolean,
+        hideInfoForSimpleMembers: Boolean,
         updatedAt: Long = System.currentTimeMillis()
     )
 
@@ -80,22 +84,31 @@ interface TontineDao {
         SELECT EXISTS(
             SELECT 1 FROM tontines t
             INNER JOIN tontine_members m ON t.id = m.tontineId
-            WHERE t.libelle = :libelle AND m.userId = :userId AND m.isInitiator = 1
+            WHERE lower(trim(t.libelle)) = lower(trim(:libelle))
+              AND m.userId = :userId AND m.isInitiator = 1
         )
     """)
     suspend fun existsByNameAndInitiator(libelle: String, userId: String): Boolean
+
+    @Query("""
+        SELECT EXISTS(
+            SELECT 1 FROM tontines t
+            INNER JOIN tontine_members m ON t.id = m.tontineId
+            WHERE lower(trim(t.libelle)) = lower(trim(:libelle))
+              AND m.userId = :userId AND m.isInitiator = 1
+              AND t.id != :excludingTontineId
+        )
+    """)
+    suspend fun existsOtherNameForInitiator(
+        libelle: String,
+        userId: String,
+        excludingTontineId: Long
+    ): Boolean
 
     @Query("DELETE FROM tontines WHERE id = :tontineId")
     suspend fun deleteTontineById(tontineId: Long)
 
     @Query("DELETE FROM tontines")
     suspend fun deleteAllTontines()
-
-    @Query("""
-    UPDATE tontines 
-    SET libelle = :libelle, exercice = :exercice, dateDebut = :dateDebut, dateFin = :dateFin 
-    WHERE id = :id
-""")
-    suspend fun updateTontineInfo(id: Long, libelle: String, exercice: String, dateDebut: LocalDate, dateFin: LocalDate)
 
 }

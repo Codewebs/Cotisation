@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cotisation - Connexion</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+    <script src="/js/supabase-config.js"></script>
+    <script src="/js/supabase-client.js"></script>
+    <script src="/js/realtime.js"></script>
 </head>
 <body class="bg-gray-900 text-white min-h-screen flex items-center justify-center p-4">
     <div class="max-w-md w-full bg-gray-800 rounded-2xl shadow-2xl border border-gray-700 p-8">
@@ -15,13 +19,13 @@
 
         <div class="space-y-6">
             <div>
-                <label class="block text-sm font-medium text-gray-300 mb-1">Téléphone</label>
-                <input id="phone" type="tel" placeholder="Votre numéro"
+                <label class="block text-sm font-medium text-gray-300 mb-1">Adresse e-mail</label>
+                <input id="email" type="email" autocomplete="email" placeholder="vous@exemple.com"
                     class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-300 mb-1">Code PIN</label>
-                <input id="pin" type="password" placeholder="••••" maxlength="4"
+                <label class="block text-sm font-medium text-gray-300 mb-1">Mot de passe</label>
+                <input id="password" type="password" autocomplete="current-password" placeholder="Votre mot de passe"
                     class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition text-center tracking-widest text-2xl">
             </div>
 
@@ -41,33 +45,28 @@
     <script>
         async function login() {
             const msgBox = document.getElementById('msg-box');
-            const data = {
-                phone: document.getElementById('phone').value,
-                pin: document.getElementById('pin').value
-            };
-
             try {
-                const res = await fetch('/users/login', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(data)
+                const { data, error } = await db.auth.signInWithPassword({
+                    email: document.getElementById('email').value.trim(),
+                    password: document.getElementById('password').value
                 });
-                const result = await res.json();
 
                 msgBox.classList.remove('hidden', 'bg-red-900/50', 'text-red-400', 'bg-green-900/50', 'text-green-400');
-                if (res.ok) {
-                    localStorage.setItem('currentUser', JSON.stringify(result));
+                if (!error) {
+                    await getCurrentUser();
                     msgBox.classList.add('bg-green-900/50', 'text-green-400');
-                    msgBox.innerText = "Bienvenue, " + result.nom;
-                    setTimeout(() => window.location.href = '/', 1000);
+                    msgBox.innerText = "Bienvenue, " + ((data.user.user_metadata && data.user.user_metadata.nom) || data.user.email);
+                    const redirect = new URLSearchParams(window.location.search).get('redirect');
+                    const target = redirect && redirect.startsWith('/') && !redirect.startsWith('//') ? redirect : '/';
+                    setTimeout(() => window.location.href = target, 1000);
                 } else {
                     msgBox.classList.add('bg-red-900/50', 'text-red-400');
-                    msgBox.innerText = result.error || "Identifiants invalides";
+                    msgBox.innerText = error.message || "Identifiants invalides";
                 }
-            } catch (e) {
-                msgBox.classList.remove('hidden');
+            } catch (error) {
+                msgBox.classList.remove('hidden', 'bg-green-900/50', 'text-green-400');
                 msgBox.classList.add('bg-red-900/50', 'text-red-400');
-                msgBox.innerText = "Erreur de connexion";
+                msgBox.innerText = error.message || "Erreur de connexion";
             }
         }
     </script>
